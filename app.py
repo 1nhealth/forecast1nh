@@ -20,6 +20,10 @@ STAGE_SENT_TO_SITE = "Sent To Site"
 STAGE_APPOINTMENT_SCHEDULED = "Appointment Scheduled"
 STAGE_SIGNED_ICF = "Signed ICF"
 STAGE_SCREEN_FAILED = "Screen Failed"
+# New constants for terminal stages
+STAGE_ENROLLED = "Enrolled"
+STAGE_LOST = "Lost"
+
 
 # --- Helper Functions ---
 @st.cache_data
@@ -1335,6 +1339,277 @@ def calculate_ai_forecast_core(
     return ai_results_df_final_display_val, ai_site_proj_df, ads_off_date_str_calc_val, feasibility_msg_final_display, is_unfeasible_this_run, final_achieved_icfs_landed_run
 # --- END OF AI FORECAST CORE FUNCTION ---
 
+
+# --- FINAL, VERIFIED, AND CORRECTED CORE FUNCTION FOR FUNNEL ANALYSIS ---
+@st.cache_data
+def calculate_pipeline_projection(
+    _processed_df, ordered_stages, ts_col_map, inter_stage_lags,
+    conversion_rates, lag_assumption_model
+):
+    """
+    Calculates the future ICFs and Enrollments, and also returns the total theoretical yield.
+    """
+    default_return = {
+        'results_df': pd.DataFrame(),
+        'total_icf_yield': 0,
+        'total_enroll_yield': 0
+    }
+    if _processed_df is None or _processed_df.empty:
+        return default_return
+
+    # --- 1. Define TRUE Terminal Stages & Filter for In-Flight Leads ---
+    true_terminal_stages = [s for s in [STAGE_ENROLLED, STAGE_SCREEN_FAILED, STAGE_LOST] if s in ts_col_map]
+    true_terminal_ts_cols = [ts_col_map.get(s) for s in true_terminal_stages]
+    in_flight_df = _processed_df.copy()
+    for ts_col in true_terminal_ts_cols:
+        if ts_col in in_flight_df.columns:
+            in_flight_df = in_flight_df[in_flight_df[ts_col].isna()]
+    if in_flight_df.empty:
+        st.info("Funnel Analysis: No leads are currently in-flight.")
+        return default_return
+
+    # --- 2. Determine Current Stage ---
+    def get_current_stage(row, ordered_stages, ts_col_map):
+        last_stage, last_ts = None, pd.NaT
+        for stage in ordered_stages:
+            if stage in true_terminal_stages: continue
+            ts_col = ts_col_map.get(stage)
+            if ts_col and ts_col in row and pd.notna(row[ts_col]):
+                if pd.isna(last_ts) or row[ts_col] > last_ts:
+                    last_ts, last_stage = row[ts_col], stage
+        return last_stage, last_ts
+    in_flight_df[['current_stage', 'current_stage_ts']] = in_flight_df.apply(
+        lambda row: get_current_stage(row, ordered_stages, ts_col_map), axis=1, result_type='expand'
+    )
+    in_flight_df.dropna(subset=['current_stage'], inplace=True)
+    
+    # --- 3. Create the Master Pool of ALL In-Flight ICFs (Existing and Projected) ---
+    all_icfs_to_project = []
+    ts_icf_col = ts_col_map.get(STAGE_SIGNED_ICF)
+    already_icf_in_flight = in_flight_df[in_flight_df[ts_icf_col].notna()].copy()
+    for _, row in already_icf_in_flight.iterrows():
+        all_icfs_to_project.append({'prob': 1.0, 'lag_to_icf': 0.0, 'start_date': row[ts_icf_col]})
+    leads_before_icf = in_flight_df[in_flight_df[ts_icf_col].isna()].copy()
+    for _, row in leads_before_icf.iterrows():
+        prob_to_icf, lags_to_icf_list, path_found = 1.0, [], False
+        start_index = ordered_stages.index(row['current_stage'])
+        for i in range(start_index, len(ordered_stages) - 1):
+            from_stage, to_stage = ordered_stages[i], ordered_stages[i+1]
+            prob_to_icf *= conversion_rates.get(f"{from_stage} -> {to_stage}", 0.0)
+            lags_to_icf_list.append(inter_stage_lags.get(f"{from_stage} -> {to_stage}", 0.0))
+            if to_stage == STAGE_SIGNED_ICF: path_found = True; break
+        if path_found and prob_to_icf > 0:
+            total_lag_to_icf = np.nansum(lags_to_icf_list)
+            all_icfs_to_project.append({'prob': prob_to_icf, 'lag_to_icf': total_lag_to_icf, 'start_date': row['current_stage_ts']})
+
+    # --- 4. Project Enrollments from the Master Pool of ICFs ---
+    projected_enrollments = []
+    icf_to_enroll_rate = conversion_rates.get(f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}", 0.0)
+    icf_to_enroll_lag = inter_stage_lags.get(f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}", 0.0)
+    if pd.isna(icf_to_enroll_lag): icf_to_enroll_lag = 0.0
+    for icf in all_icfs_to_project:
+        if pd.isna(icf['start_date']) or pd.isna(icf['lag_to_icf']): continue
+        icf_landing_date = icf['start_date'] + pd.to_timedelta(icf['lag_to_icf'], unit='D')
+        if pd.isna(icf_landing_date): continue
+        projected_enrollments.append({'prob': icf['prob'] * icf_to_enroll_rate, 'lag': icf_to_enroll_lag, 'start_date': icf_landing_date})
+
+    # --- 5. Calculate TOTAL THEORETICAL YIELD (the true number) ---
+    total_icf_yield = sum(p['prob'] for p in all_icfs_to_project)
+    total_enroll_yield = sum(p['prob'] for p in projected_enrollments)
+
+    # --- 6. Dynamically size the results dataframe for FUTURE projections ---
+    all_landing_dates = [p['start_date'] + pd.to_timedelta(p['lag_to_icf'], 'D') for p in all_icfs_to_project if pd.notna(p.get('start_date')) and pd.notna(p.get('lag_to_icf'))]
+    all_landing_dates.extend([p['start_date'] + pd.to_timedelta(p['lag'], 'D') for p in projected_enrollments if pd.notna(p.get('start_date')) and pd.notna(p.get('lag'))])
+    
+    proj_start_month = pd.Period(datetime.now(), 'M')
+    valid_dates = [d for d in all_landing_dates if pd.notna(d)]
+    if not valid_dates:
+        future_months = pd.period_range(start=proj_start_month, periods=6, freq='M')
+    else:
+        max_date = max(valid_dates)
+        proj_end_month = max(pd.Period(max_date, 'M'), proj_start_month)
+        future_months = pd.period_range(start=proj_start_month, end=proj_end_month, freq='M')
+    
+    results_df = pd.DataFrame(0.0, index=future_months, columns=['Projected_ICF_Landed', 'Projected_Enrollments_Landed'])
+
+    # --- 7. Aggregate and Smear Projections into the FUTURE table ---
+    def smear_projection(df, projections_list, lag_col_name, target_col):
+        for proj in projections_list:
+            if proj['prob'] <= 0 or pd.isna(proj['start_date']) or pd.isna(proj[lag_col_name]): continue
+            landing_date = proj['start_date'] + pd.to_timedelta(proj[lag_col_name], unit='D')
+            landing_period = pd.Period(landing_date, 'M')
+            if landing_period in df.index:
+                df.loc[landing_period, target_col] += proj['prob']
+        return df
+
+    results_df = smear_projection(results_df, all_icfs_to_project, 'lag_to_icf', 'Projected_ICF_Landed')
+    results_df = smear_projection(results_df, projected_enrollments, 'lag', 'Projected_Enrollments_Landed')
+
+    results_df['Projected_ICF_Landed'] = results_df['Projected_ICF_Landed'].round(0).astype(int)
+    results_df['Cumulative_ICF_Landed'] = results_df['Projected_ICF_Landed'].cumsum()
+    results_df['Projected_Enrollments_Landed'] = results_df['Projected_Enrollments_Landed'].round(0).astype(int)
+    results_df['Cumulative_Enrollments_Landed'] = results_df['Projected_Enrollments_Landed'].cumsum()
+
+    return {
+        'results_df': results_df,
+        'total_icf_yield': total_icf_yield,
+        'total_enroll_yield': total_enroll_yield,
+        'in_flight_df_for_narrative': in_flight_df
+    }
+
+# --- NEW FUNCTION FOR FUNNEL NARRATIVE ---
+def generate_funnel_narrative(in_flight_df, ordered_stages, conversion_rates):
+    """
+    Generates a list of dictionaries, each representing a step in the funnel narrative.
+    """
+    if in_flight_df.empty:
+        return []
+
+    narrative_steps = []
+    
+    # Get the counts of leads currently at each stage
+    stage_counts = in_flight_df['current_stage'].value_counts().to_dict()
+
+    # This variable will track the total expected yield as we move down the funnel
+    cumulative_yield = len(in_flight_df) 
+
+    for i, stage_name in enumerate(ordered_stages):
+        # Stop before the last stage, as there's no "next step"
+        if i >= len(ordered_stages) - 1:
+            break
+
+        # --- Data for the current step ---
+        leads_at_this_stage = stage_counts.get(stage_name, 0)
+        
+        # --- Data for the next step ---
+        next_stage_name = ordered_stages[i+1]
+        rate_key = f"{stage_name} -> {next_stage_name}"
+        conversion_rate = conversion_rates.get(rate_key)
+
+        # Calculate the expected number of people to advance from the current group
+        projected_to_advance = leads_at_this_stage * conversion_rate if conversion_rate is not None else 0
+
+        step_data = {
+            "current_stage": stage_name,
+            "leads_at_stage": leads_at_this_stage,
+            "next_stage": next_stage_name,
+            "conversion_rate": conversion_rate,
+            "projected_to_advance": projected_to_advance,
+        }
+        narrative_steps.append(step_data)
+
+    return narrative_steps
+
+# --- REVISED UI TAB FOR FUNNEL ANALYSIS ---
+def render_funnel_analysis_tab():
+    st.header("🔬 Funnel Analysis (Based on Current Pipeline)")
+    st.info("""
+    This forecast shows the expected outcomes (**ICFs & Enrollments**) from the leads **already in your funnel**.
+    It answers the question: "If we stopped all new recruitment activities today, what results would we still see and when?"
+    """)
+
+    # ... Assumption controls ...
+    st.markdown("---")
+    st.subheader("Funnel Analysis Assumptions")
+    rate_options_display = {"Manual Input Below": "Manual", "Overall Historical Average": "Overall", "1-Month Rolling Avg.": "1-Month", "3-Month Rolling Avg.": "3-Month", "6-Month Rolling Avg.": "6-Month"}
+    selected_rate_method_label = st.radio("Base Funnel Conversion Rates On:", options=list(rate_options_display.keys()), index=2, key="fa_rate_method_radio", horizontal=True)
+    fa_rate_method_internal = "Manual Input Below"; fa_rolling_window = 0
+    if selected_rate_method_label == "Overall Historical Average": fa_rate_method_internal = "Rolling Historical Average"; fa_rolling_window = 999
+    elif "Rolling" in selected_rate_method_label: fa_rate_method_internal = "Rolling Historical Average"; fa_rolling_window = int(selected_rate_method_label.split('-')[0])
+    manual_rates_fa = {}
+    st.write("Define Manual Conversion Rates for Funnel Analysis:")
+    fa_cols_rate = st.columns(3)
+    with fa_cols_rate[0]:
+        manual_rates_fa[f"{STAGE_PASSED_ONLINE_FORM} -> {STAGE_PRE_SCREENING_ACTIVITIES}"] = st.slider("FA: POF -> PreScreen %", 0.0, 100.0, 95.0, key='fa_cr_qps', step=0.1, format="%.1f%%") / 100.0
+        manual_rates_fa[f"{STAGE_PRE_SCREENING_ACTIVITIES} -> {STAGE_SENT_TO_SITE}"] = st.slider("FA: PreScreen -> StS %", 0.0, 100.0, 20.0, key='fa_cr_pssts', step=0.1, format="%.1f%%") / 100.0
+    with fa_cols_rate[1]:
+        manual_rates_fa[f"{STAGE_SENT_TO_SITE} -> {STAGE_APPOINTMENT_SCHEDULED}"] = st.slider("FA: StS -> Appt %", 0.0, 100.0, 45.0, key='fa_cr_sa', step=0.1, format="%.1f%%") / 100.0
+        manual_rates_fa[f"{STAGE_APPOINTMENT_SCHEDULED} -> {STAGE_SIGNED_ICF}"] = st.slider("FA: Appt -> ICF %", 0.0, 100.0, 55.0, key='fa_cr_ai', step=0.1, format="%.1f%%") / 100.0
+    with fa_cols_rate[2]:
+        manual_rates_fa[f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}"] = st.slider("FA: ICF -> Enrolled %", 0.0, 100.0, 85.0, key='fa_cr_ie', step=0.1, format="%.1f%%") / 100.0
+    st.markdown("---")
+
+    # --- Calculation & Display ---
+    if st.button("🔬 Analyze Current Funnel", key="run_funnel_analysis"):
+        manual_rates_with_enroll = manual_rates_fa.copy()
+        if f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}" not in manual_rates_with_enroll:
+             manual_rates_with_enroll[f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}"] = 0.85
+        effective_rates_fa, rates_method_desc_fa = determine_effective_projection_rates(
+            st.session_state.referral_data_processed, st.session_state.ordered_stages,
+            st.session_state.ts_col_map, fa_rate_method_internal,
+            fa_rolling_window, manual_rates_with_enroll,
+            st.session_state.get('inter_stage_lags', {}), sidebar_display_area=None
+        )
+        st.session_state.funnel_analysis_data = calculate_pipeline_projection(
+            _processed_df=st.session_state.referral_data_processed,
+            ordered_stages=st.session_state.ordered_stages,
+            ts_col_map=st.session_state.ts_col_map,
+            inter_stage_lags=st.session_state.get('inter_stage_lags', {}),
+            conversion_rates=effective_rates_fa,
+            lag_assumption_model=None
+        )
+        # Also generate the narrative data and store it
+        st.session_state.funnel_narrative_data = generate_funnel_narrative(
+            st.session_state.funnel_analysis_data.get('in_flight_df_for_narrative', pd.DataFrame()),
+            st.session_state.ordered_stages,
+            effective_rates_fa
+        )
+        st.session_state.funnel_analysis_rates_desc = rates_method_desc_fa
+
+    if 'funnel_analysis_data' in st.session_state:
+        analysis_data = st.session_state.funnel_analysis_data
+        results_df = analysis_data['results_df']
+        total_icf_yield = analysis_data['total_icf_yield']
+        total_enroll_yield = analysis_data['total_enroll_yield']
+        narrative_steps = st.session_state.get('funnel_narrative_data', [])
+        rates_desc = st.session_state.get('funnel_analysis_rates_desc', "N/A")
+        
+        st.caption(f"**Projection Using: {rates_desc} Conversion Rates**")
+        st.subheader("Pipeline Yield Summary")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Expected ICF Yield from Funnel", f"{total_icf_yield:,.1f}")
+        with col2:
+            st.metric("Total Expected Enrollment Yield from Funnel", f"{total_enroll_yield:,.1f}")
+
+        # --- NEW NARRATIVE SECTION ---
+        if narrative_steps:
+            with st.expander("Show Funnel Breakdown", expanded=True):
+                total_expected_from_funnel = {stage: 0.0 for stage in st.session_state.ordered_stages}
+                # Initialize with top-of-funnel leads
+                if narrative_steps:
+                    top_stage = narrative_steps[0]['current_stage']
+                    total_expected_from_funnel[top_stage] = sum(s['leads_at_stage'] for s in narrative_steps)
+
+                for step in narrative_steps:
+                    st.markdown(f"#### From '{step['current_stage']}'")
+                    col1, col2 = st.columns(2)
+                    col1.metric(f"Leads Currently At This Stage", f"{step['leads_at_stage']:,}")
+                    if step['conversion_rate'] is not None:
+                        col2.metric(f"Historical Conversion to '{step['next_stage']}'", f"{step['conversion_rate']:.1%}")
+                        st.info(f"From this group of **{step['leads_at_stage']:,}** leads, we project **~{step['projected_to_advance']:.1f}** will advance to *'{step['next_stage']}'*.", icon="➡️")
+                    else:
+                        col2.warning(f"No conversion rate available for '{step['next_stage']}'")
+                    st.markdown("---")
+
+        st.subheader("Projected Monthly Landings (Future)")
+        future_icfs = results_df['Projected_ICF_Landed'].sum()
+        overdue_icfs = total_icf_yield - future_icfs
+        if overdue_icfs > 0.1:
+            st.warning(f"**Note:** {overdue_icfs:,.1f} ICFs from the total yield were projected to land in past months and are not shown in the future forecast table.", icon="⚠️")
+        
+        display_df = results_df[['Projected_ICF_Landed', 'Projected_Enrollments_Landed']]
+        st.dataframe(display_df.style.format("{:,.0f}"))
+        st.subheader("Cumulative Future Projections Over Time")
+        chart_df = results_df[['Cumulative_ICF_Landed', 'Cumulative_Enrollments_Landed']].copy()
+        if isinstance(chart_df.index, pd.PeriodIndex): chart_df.index = chart_df.index.to_timestamp()
+        st.line_chart(chart_df)
+        try:
+            csv_fa = results_df.reset_index().to_csv(index=False).encode('utf-8')
+            st.download_button(label="Download Funnel Analysis Data", data=csv_fa, file_name='funnel_analysis_projection.csv', mime='text/csv', key='dl_funnel_analysis')
+        except Exception as e:
+            st.warning(f"Funnel Analysis download error: {e}")
+            
 # --- Streamlit UI ---
 # ... (Session state initializations remain the same) ...
 if 'data_processed_successfully' not in st.session_state: st.session_state.data_processed_successfully = False
@@ -1457,10 +1732,13 @@ with st.sidebar:
             rolling_window_months_sidebar = st.selectbox("Select Rolling Window (Months):", [1, 3, 6, 999], index=1, format_func=lambda x: "Overall Average" if x==999 else f"{x}-Month", key='rolling_window_v2_sel')
             if st.session_state.data_processed_successfully and st.session_state.referral_data_processed is not None and \
                st.session_state.ordered_stages is not None and st.session_state.ts_col_map is not None:
+                # Prepare a manual rates dict that includes all potential stages for rolling calc
+                manual_rates_for_rolling_calc = manual_proj_conv_rates_sidebar.copy()
+                manual_rates_for_rolling_calc[f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}"] = 0.85 # Add a default
                 determine_effective_projection_rates(
                     st.session_state.referral_data_processed, st.session_state.ordered_stages,
                     st.session_state.ts_col_map, rate_assumption_method_sidebar,
-                    rolling_window_months_sidebar, manual_proj_conv_rates_sidebar,
+                    rolling_window_months_sidebar, manual_rates_for_rolling_calc,
                     st.session_state.get('inter_stage_lags', {}), sidebar_display_area=st.sidebar)
             else: st.sidebar.caption("Upload data to view calculated rolling rates.")
         else: rolling_window_months_sidebar = 0; st.sidebar.caption("Using manually input rates above for Projections tab.")
@@ -1522,14 +1800,15 @@ if st.session_state.data_processed_successfully:
         st.success("Data loaded and preprocessed successfully!"); st.session_state.success_message_shown = True
     
     # UPDATED TABS
-    tab_titles = ["📅 Monthly ProForma", "🏆 Site Performance", "📢 Ad Performance", "📈 Projections", "🤖 AI Forecast"]
+    tab_titles = ["📅 Monthly ProForma", "🏆 Site Performance", "📢 Ad Performance", "📈 Projections", "🔬 Funnel Analysis", "🤖 AI Forecast"]
     tabs = st.tabs(tab_titles)
 
     tab_proforma = tabs[0]
     tab_site_perf = tabs[1]
-    tab_ad_perf = tabs[2] # New Ad Performance Tab
+    tab_ad_perf = tabs[2]
     tab_projections = tabs[3]
-    tab_ai_forecast = tabs[4]
+    tab_funnel_analysis = tabs[4] # NEW TAB
+    tab_ai_forecast = tabs[5]
 
 
     with tab_proforma: 
@@ -1573,7 +1852,7 @@ if st.session_state.data_processed_successfully:
 
     # --- NEW AD PERFORMANCE TAB ---
     with tab_ad_perf:
-        st.header("📢 Ad Channel Performance")
+        st.header("Ad Channel Performance")
         st.caption("Performance metrics grouped by UTM parameters, scored using the same weights as Site Performance.")
 
         if not st.session_state.data_processed_successfully or referral_data_processed is None or referral_data_processed.empty:
@@ -1582,10 +1861,6 @@ if st.session_state.data_processed_successfully:
             st.warning("UTM Source column not found in the uploaded data. Ad Performance cannot be calculated.")
         else:
             df_for_ad_perf = referral_data_processed.copy()
-            # UTM Medium is not used for grouping in this simplified version
-            # if "UTM Medium" not in df_for_ad_perf.columns:
-            #     df_for_ad_perf["UTM Medium"] = "N/A" 
-
             st.subheader("Performance by UTM Source")
             utm_source_metrics_df = calculate_grouped_performance_metrics(
                 df_for_ad_perf, ordered_stages, ts_col_map,
@@ -1594,10 +1869,9 @@ if st.session_state.data_processed_successfully:
             )
 
             if not utm_source_metrics_df.empty:
-                # calculate_grouped_performance_metrics now returns the df with "UTM Source" as the group column name
                 ranked_utm_source_df = score_performance_groups(
                     utm_source_metrics_df, weights_normalized,
-                    group_col_name="UTM Source" # This should now match the column name
+                    group_col_name="UTM Source" 
                 )
                 
                 display_cols_ad = ['UTM Source', 'Score', 'Grade', 'Total Qualified', 'PSA Count', 'StS Count', 'Appt Count', 'ICF Count',
@@ -1625,10 +1899,6 @@ if st.session_state.data_processed_successfully:
                 else: st.info("No data to display for UTM Source performance after processing.")
             else: st.info("Could not calculate performance metrics for UTM Source.")
 
-            # Removed the UTM Source / UTM Medium section as per request
-            # st.markdown("---")
-            # st.subheader("Performance by UTM Source / UTM Medium")
-            # ... (logic for combined table was here) ...
 
     with tab_projections: 
         st.header("Projections (Based on Future Spend)")
@@ -1647,8 +1917,13 @@ if st.session_state.data_processed_successfully:
                 lag_df_list_tab3 = []
                 temp_maturity_periods_display_tab3 = {}
                 display_maturity_lag_multiplier_tab3 = 1.5; display_min_effective_maturity_tab3 = 20; display_default_maturity_tab3 = 45
+                
+                # Use the full manual rates dict to ensure all keys are checked
+                manual_rates_with_enroll_tab3 = manual_proj_conv_rates_sidebar.copy()
+                manual_rates_with_enroll_tab3[f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}"] = 0.85 # Default
+                
                 if inter_stage_lags_data:
-                    for r_key_disp_tab3 in manual_proj_conv_rates_sidebar.keys():
+                    for r_key_disp_tab3 in manual_rates_with_enroll_tab3.keys():
                         avg_lag_disp_tab3 = inter_stage_lags_data.get(r_key_disp_tab3)
                         if pd.notna(avg_lag_disp_tab3) and avg_lag_disp_tab3 > 0:
                             calc_mat_disp_tab3 = round(display_maturity_lag_multiplier_tab3 * avg_lag_disp_tab3)
@@ -1753,8 +2028,12 @@ if st.session_state.data_processed_successfully:
             except Exception as e_dl_site3: st.warning(f"Site projection (Tab 3) download error: {e_dl_site3}")
         else: st.info("Site-level projection data (Projections Tab) is not available or is empty.")
 
+    # --- NEW: FUNNEL ANALYSIS TAB ---
+    with tab_funnel_analysis:
+        render_funnel_analysis_tab()
+
     with tab_ai_forecast:
-        st.header("🤖 AI Forecast (Goal-Based)")
+        st.header("AI Forecast (Goal-Based)")
         st.info("""
         Define your recruitment goals. The tool will estimate a monthly plan using a 'frontloading' strategy
         (prioritizing earlier months for activity, up to a monthly capacity) to meet your LPI.
@@ -1931,9 +2210,14 @@ if st.session_state.data_processed_successfully:
                 ai_effective_rates = ai_manual_conv_rates_tab_input_val
                 ai_rates_method_desc = "Manual Input for AI Forecast"
             else:
+                # Add all possible rates to the manual dict so rolling calc can find them
+                manual_rates_for_ai_rolling = manual_proj_conv_rates_sidebar.copy()
+                manual_rates_for_ai_rolling.update(ai_manual_conv_rates_tab_input_val)
+                manual_rates_for_ai_rolling[f"{STAGE_SIGNED_ICF} -> {STAGE_ENROLLED}"] = 0.85
+
                 ai_effective_rates, ai_rates_method_desc = determine_effective_projection_rates(
                     referral_data_processed, ordered_stages, ts_col_map, ai_rate_assumption_method_internal_val,
-                    ai_rolling_window_months_internal_val, manual_proj_conv_rates_sidebar,
+                    ai_rolling_window_months_internal_val, manual_rates_for_ai_rolling,
                     inter_stage_lags_data, sidebar_display_area=None )
                 if "Error" in ai_rates_method_desc or "Failed" in ai_rates_method_desc or "No History" in ai_rates_method_desc or not ai_effective_rates or all(v == 0 for v in ai_effective_rates.values()):
                     st.warning(f"Could not determine reliable '{selected_rate_method_label_ai_tab}' rates for AI Forecast ({ai_rates_method_desc}). Using manual rates from Projections Tab sidebar as fallback.")
@@ -1989,21 +2273,6 @@ if st.session_state.data_processed_successfully:
                     ai_lag_p50_days=current_p50,
                     ai_lag_p75_days=current_p75
                 )
-                if 'st' in globals() and hasattr(st, 'sidebar') and hasattr(st.session_state, 'ai_gen_df_debug_primary'):
-                    st.sidebar.subheader("Debug: Primary Run After-Calc")
-                    st.sidebar.markdown(f"**Message (Primary):** `{ai_message_run1}`")
-                    st.sidebar.markdown(f"**Unfeasible (Primary):** `{ai_unfeasible_run1}`")
-                    st.sidebar.markdown(f"**Actual ICFs (Primary):** `{ai_actual_icfs_run1:.1f}`")
-                    if st.session_state.ai_gen_df_debug_primary is not None and not st.session_state.ai_gen_df_debug_primary.empty:
-                        st.sidebar.write("Primary Run ai_gen_df (Gen Plan):")
-                        display_debug_gen_df_val = st.session_state.ai_gen_df_debug_primary[['Required_QLs_POF_Final', 'Generated_ICF_Mean', 'Unallocatable_QLs', 'Implied_Ad_Spend']].copy()
-                        display_debug_gen_df_val.index = display_debug_gen_df_val.index.strftime('%Y-%m')
-                        st.sidebar.dataframe(display_debug_gen_df_val)
-                    if st.session_state.ai_results_df_debug_primary is not None and not st.session_state.ai_results_df_debug_primary.empty:
-                        st.sidebar.write("Primary Run ai_results_df (Landing Plan - Full):")
-                        display_debug_results_df_val = st.session_state.ai_results_df_debug_primary[['Projected_ICF_Landed', 'Cumulative_ICF_Landed']].copy()
-                        display_debug_results_df_val.index = display_debug_results_df_val.index.strftime('%Y-%m')
-                        st.sidebar.dataframe(display_debug_results_df_val)
 
                 st.session_state.ai_forecast_results = {
                     'df': ai_results_df_run1, 'site_df': ai_site_df_run1, 'ads_off': ai_ads_off_run1,
@@ -2012,7 +2281,7 @@ if st.session_state.data_processed_successfully:
                 }
 
                 if ai_unfeasible_run1:
-                    st.sidebar.info(f"Initial AI forecast: {ai_message_run1}. Attempting best-case scenario by extending LPI to max projection horizon.")
+                    st.info(f"Initial AI forecast: {ai_message_run1}. Attempting best-case scenario by extending LPI to max projection horizon.")
                     run_mode_for_call_best_case_val = "best_case_extended_lpi"
                     ai_results_df_run2, ai_site_df_run2, ai_ads_off_run2, ai_message_run2, ai_unfeasible_run2, ai_actual_icfs_run2 = calculate_ai_forecast_core(
                         goal_lpi_date_dt_orig=ai_goal_lpi_date,
@@ -2033,21 +2302,6 @@ if st.session_state.data_processed_successfully:
                         ai_lag_p50_days=current_p50,
                         ai_lag_p75_days=current_p75
                     )
-                    if 'st' in globals() and hasattr(st, 'sidebar') and hasattr(st.session_state, 'ai_gen_df_debug_best_case'):
-                        st.sidebar.subheader("Debug: Best Case Run After-Calc")
-                        st.sidebar.markdown(f"**Message (Best Case):** `{ai_message_run2}`")
-                        st.sidebar.markdown(f"**Unfeasible (Best Case):** `{ai_unfeasible_run2}`")
-                        st.sidebar.markdown(f"**Actual ICFs (Best Case):** `{ai_actual_icfs_run2:.1f}`")
-                        if st.session_state.ai_gen_df_debug_best_case is not None and not st.session_state.ai_gen_df_debug_best_case.empty:
-                            st.sidebar.write("Best Case Run ai_gen_df (Gen Plan):")
-                            display_debug_gen_df_bc_val = st.session_state.ai_gen_df_debug_best_case[['Required_QLs_POF_Final', 'Generated_ICF_Mean', 'Unallocatable_QLs', 'Implied_Ad_Spend']].copy()
-                            display_debug_gen_df_bc_val.index = display_debug_gen_df_bc_val.index.strftime('%Y-%m')
-                            st.sidebar.dataframe(display_debug_gen_df_bc_val)
-                        if st.session_state.ai_results_df_debug_best_case is not None and not st.session_state.ai_results_df_debug_best_case.empty:
-                            st.sidebar.write("Best Case Run ai_results_df (Landing Plan - Full):")
-                            display_debug_results_df_bc_val = st.session_state.ai_results_df_debug_best_case[['Projected_ICF_Landed', 'Cumulative_ICF_Landed']].copy()
-                            display_debug_results_df_bc_val.index = display_debug_results_df_bc_val.index.strftime('%Y-%m')
-                            st.sidebar.dataframe(display_debug_results_df_bc_val)
 
                     st.session_state.ai_forecast_results = {
                         'df': ai_results_df_run2, 'site_df': ai_site_df_run2, 'ads_off': ai_ads_off_run2,
@@ -2063,8 +2317,7 @@ if st.session_state.data_processed_successfully:
             ai_message_display = results_ai_tab['message']
             ai_unfeasible_display_flag = results_ai_tab['unfeasible']
             ai_actual_icfs_display = results_ai_tab['actual_icfs']
-            run_mode_msg_display = results_ai_tab.get('run_mode_displayed', 'primary')
-
+            
             st.markdown("---")
             if not ai_unfeasible_display_flag :
                  st.success(f"Forecast Status: {ai_message_display}")
@@ -2106,6 +2359,8 @@ if st.session_state.data_processed_successfully:
                     if 'Ad_Spend' in col_n_ai_res_fmt : ai_display_df_filtered_res_fmt[col_n_ai_res_fmt] = ai_display_df_filtered_res_fmt[col_n_ai_res_fmt].apply(lambda x_fmt: f"${x_fmt:,.2f}" if isinstance(x_fmt, (int,float)) and pd.notna(x_fmt) else (x_fmt if isinstance(x_fmt,str) else '-'))
                     elif 'Planned QLs (POF)' in col_n_ai_res_fmt or 'ICF_Landed' in col_n_ai_res_fmt: ai_display_df_filtered_res_fmt[col_n_ai_res_fmt] = ai_display_df_filtered_res_fmt[col_n_ai_res_fmt].apply(lambda x_fmt: f"{int(x_fmt):,}" if pd.notna(x_fmt) and isinstance(x_fmt,(int,float)) and x_fmt==x_fmt else (x_fmt if isinstance(x_fmt,str) else '-'))
                 st.dataframe(ai_display_df_filtered_res_fmt.style.format(na_rep='-'))
+                
+                # The incomplete line is now corrected and joined with the subsequent code.
                 if proj_icf_variation_percent_sidebar > 0 and 'Projected CPICF (Low-Mean-High)' in ai_display_df_filtered_res_fmt.columns:
                     st.caption(f"Note: CPICF range based on +/- {proj_icf_variation_percent_sidebar}% ICF variation (set in sidebar).")
 
@@ -2115,6 +2370,7 @@ if st.session_state.data_processed_successfully:
                     if isinstance(ai_chart_data_res_val.index, pd.PeriodIndex): ai_chart_data_res_val.index = ai_chart_data_res_val.index.to_timestamp()
                     ai_chart_data_res_val['Projected_ICF_Landed'] = pd.to_numeric(ai_chart_data_res_val['Projected_ICF_Landed'], errors='coerce').fillna(0)
                     st.line_chart(ai_chart_data_res_val)
+                    
             elif ai_message_display and "Not Calculated" not in ai_message_display and "Missing critical base data" not in ai_message_display : 
                 st.info(f"AI Forecast calculation did not produce a monthly performance table. Status: {ai_message_display}")
 
