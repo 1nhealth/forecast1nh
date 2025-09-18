@@ -17,6 +17,7 @@ if not st.session_state.get('data_processed_successfully', False):
 
 # --- Synced Assumption Controls ---
 with st.expander("Adjust Performance Scoring Weights"):
+    # (Your slider code is correct and remains here)
     st.session_state.w_qual_to_enroll = st.slider("Qual (POF) -> Enrollment %", 0, 100, st.session_state.w_qual_to_enroll, key="w_q_enr_site")
     st.session_state.w_icf_to_enroll = st.slider("ICF -> Enrollment %", 0, 100, st.session_state.w_icf_to_enroll, key="w_icf_enr_site")
     st.session_state.w_qual_to_icf = st.slider("Qual (POF) -> ICF %", 0, 100, st.session_state.w_qual_to_icf, key="w_q_icf_site")
@@ -31,31 +32,29 @@ with st.expander("Adjust Performance Scoring Weights"):
 
 # --- Calculation Logic ---
 weights = {
-    "Qual to Enrollment %": st.session_state.w_qual_to_enroll,
-    "ICF to Enrollment %": st.session_state.w_icf_to_enroll,
-    "Qual -> ICF %": st.session_state.w_qual_to_icf,
-    "Avg TTC (Days)": st.session_state.w_avg_ttc,
-    "Site Screen Fail %": st.session_state.w_site_sf,
-    "StS -> Appt %": st.session_state.w_sts_appt,
-    "Appt -> ICF %": st.session_state.w_appt_icf,
-    "Lag Qual -> ICF (Days)": st.session_state.w_lag_q_icf,
-    "Screen Fail % (from ICF)": st.session_state.w_generic_sf,
-    "Projection Lag (Days)": st.session_state.w_proj_lag,
+    "Qual to Enrollment %": st.session_state.w_qual_to_enroll, "ICF to Enrollment %": st.session_state.w_icf_to_enroll,
+    "Qual -> ICF %": st.session_state.w_qual_to_icf, "Avg TTC (Days)": st.session_state.w_avg_ttc,
+    "Site Screen Fail %": st.session_state.w_site_sf, "StS -> Appt %": st.session_state.w_sts_appt,
+    "Appt -> ICF %": st.session_state.w_appt_icf, "Lag Qual -> ICF (Days)": st.session_state.w_lag_q_icf,
+    "Screen Fail % (from ICF)": st.session_state.w_generic_sf, "Projection Lag (Days)": st.session_state.w_proj_lag,
 }
 total_weight = sum(abs(w) for w in weights.values())
 weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
 
-# Load Data from Session State
 site_metrics = st.session_state.site_metrics_calculated
 
 if site_metrics is not None and not site_metrics.empty and weights_normalized:
+    # --- THIS IS THE CORRECTED LOGIC FLOW ---
+    
+    # 1. Calculate the ranked dataframe with raw numbers
     ranked_sites_df = score_sites(site_metrics, weights_normalized)
 
+    # 2. Calculate KPIs using the raw, numeric data
     st.subheader("Key Performance Indicators (Overall)")
     
-    total_qualified = ranked_sites_df['Total Qualified'].sum() if 'Total Qualified' in ranked_sites_df else 0
-    total_enrollments = ranked_sites_df['Enrollment Count'].sum() if 'Enrollment Count' in ranked_sites_df else 0
-    total_icfs = ranked_sites_df['ICF Count'].sum() if 'ICF Count' in ranked_sites_df else 0
+    total_qualified = ranked_sites_df['Total Qualified'].sum() if 'Total Qualified' in ranked_sites_df.columns else 0
+    total_enrollments = ranked_sites_df['Enrollment Count'].sum() if 'Enrollment Count' in ranked_sites_df.columns else 0
+    total_icfs = ranked_sites_df['ICF Count'].sum() if 'ICF Count' in ranked_sites_df.columns else 0
     overall_qual_to_icf_rate = (total_icfs / total_qualified) * 100 if total_qualified > 0 else 0
 
     kpi_cols = st.columns(3)
@@ -68,17 +67,15 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
             
     st.divider()
 
+    # 3. Now, prepare the DataFrame for display in the main table
     with st.container(border=True):
         st.subheader("Site Performance Ranking")
         
         display_cols = [
             'Site', 'Score', 'Grade', 
             'Total Qualified', 
-            'Pre-Screening Activities Count',
-            'Sent To Site Count',
-            'Appointment Scheduled Count',
-            'Signed ICF Count',
-            'Enrollment Count', 
+            'Pre-Screening Activities Count', 'Sent To Site Count',
+            'Appointment Scheduled Count', 'Signed ICF Count', 'Enrollment Count', 
             'Qual to Enrollment %', 'ICF to Enrollment %', 'Qual -> ICF %', 
             'POF -> PSA %', 'PSA -> StS %', 'StS -> Appt %', 'Appt -> ICF %', 
             'Avg TTC (Days)', 'Site Screen Fail %', 'Lag Qual -> ICF (Days)', 
@@ -90,7 +87,6 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
         if display_cols_exist:
             final_display_df = ranked_sites_df[display_cols_exist]
             if not final_display_df.empty:
-                # Rename columns for better readability in the table header
                 rename_map = {
                     'Pre-Screening Activities Count': 'PSA Count',
                     'Sent To Site Count': 'StS Count',
@@ -100,6 +96,7 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
                 }
                 final_display_df = final_display_df.rename(columns=rename_map)
                 
+                # 4. Format the data ONLY for the visual table, after all calculations are done
                 formatted_df = format_performance_df(final_display_df)
                 st.dataframe(formatted_df, hide_index=True, use_container_width=True)
             else:
