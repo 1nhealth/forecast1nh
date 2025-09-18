@@ -104,6 +104,7 @@ with st.container(border=True):
                     'Sent To Site Count': 'StS Count',
                     'Appointment Scheduled Count': 'Appt Count',
                     'Signed ICF Count': 'ICF Count'
+                    'Enrollment Count': 'Enrollments'
                 }
                 final_ad_display = final_ad_display.rename(columns=rename_map)
                 
@@ -172,6 +173,7 @@ if "UTM Medium" in processed_data.columns:
                         'Sent To Site Count': 'StS Count',
                         'Appointment Scheduled Count': 'Appt Count',
                         'Signed ICF Count': 'ICF Count'
+                        'Enrollment Count': 'Enrollments'
                     }
                     final_combo_display = final_combo_display.rename(columns=rename_map)
 

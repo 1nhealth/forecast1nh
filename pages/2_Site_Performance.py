@@ -100,6 +100,7 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
                     'Sent To Site Count': 'StS Count',
                     'Appointment Scheduled Count': 'Appt Count',
                     'Signed ICF Count': 'ICF Count'
+                    'Enrollment Count': 'Enrollments'
                 }
                 final_display_df = final_display_df.rename(columns=rename_map)
                 
