@@ -26,7 +26,7 @@ if not st.session_state.get('data_processed_successfully', False):
 
 # --- Synced Assumption Controls ---
 with st.expander("Adjust Performance Scoring Weights"):
-    # Each slider reads its default value from session_state and writes the new value back to session_state.
+    # (Your slider code is correct and remains here)
     st.session_state.w_qual_to_enroll = st.slider("Qual (POF) -> Enrollment %", 0, 100, st.session_state.w_qual_to_enroll, key="w_q_enr_ad")
     st.session_state.w_icf_to_enroll = st.slider("ICF -> Enrollment %", 0, 100, st.session_state.w_icf_to_enroll, key="w_icf_enr_ad")
     st.session_state.w_qual_to_icf = st.slider("Qual (POF) -> ICF %", 0, 100, st.session_state.w_qual_to_icf, key="w_q_icf_ad")
@@ -81,19 +81,32 @@ with st.container(border=True):
             group_col_name="UTM Source"
         )
 
+        # --- THIS IS THE CORRECTED, COMPLETE LIST OF COLUMNS ---
         display_cols_ad = [
-            'UTM Source', 'Score', 'Grade', 'Total Qualified', 'PSA Count', 'StS Count',
-            'Appt Count', 'ICF Count', 'Enrollment Count', 'Qual to Enrollment %',
-            'ICF to Enrollment %', 'Qual -> ICF %', 'POF -> PSA %', 'PSA -> StS %',
-            'StS -> Appt %', 'Appt -> ICF %', 'Lag Qual -> ICF (Days)',
-            'Projection Lag (Days)', 'Screen Fail % (from ICF)'
+            'UTM Source', 'Score', 'Grade',
+            'Total Qualified',
+            'Pre-Screening Activities Count',
+            'Sent To Site Count',
+            'Appointment Scheduled Count',
+            'Signed ICF Count',
+            'Enrollment Count',
+            'Qual to Enrollment %', 'ICF to Enrollment %', 'Qual -> ICF %',
+            'POF -> PSA %', 'PSA -> StS %', 'StS -> Appt %', 'Appt -> ICF %',
+            'Lag Qual -> ICF (Days)', 'Projection Lag (Days)', 'Screen Fail % (from ICF)'
         ]
         display_cols_exist = [col for col in display_cols_ad if col in ranked_utm_source_df.columns]
         
         if display_cols_exist:
             final_ad_display = ranked_utm_source_df[display_cols_exist]
-
             if not final_ad_display.empty:
+                rename_map = {
+                    'Pre-Screening Activities Count': 'PSA Count',
+                    'Sent To Site Count': 'StS Count',
+                    'Appointment Scheduled Count': 'Appt Count',
+                    'Signed ICF Count': 'ICF Count'
+                }
+                final_ad_display = final_ad_display.rename(columns=rename_map)
+                
                 formatted_df = format_performance_df(final_ad_display)
                 st.dataframe(formatted_df, hide_index=True, use_container_width=True)
                 try:
@@ -107,6 +120,7 @@ with st.container(border=True):
             st.info("Could not find any standard columns to display for UTM Source performance.")
     else:
         st.info("Could not calculate performance metrics for UTM Source.")
+
 
 st.write("") # Spacer
 
@@ -134,20 +148,33 @@ if "UTM Medium" in processed_data.columns:
                 split_cols = ranked_utm_combo_df['UTM Source/Medium'].str.split(' / ', n=1, expand=True)
                 ranked_utm_combo_df['UTM Source'] = split_cols[0]
                 ranked_utm_combo_df['UTM Medium'] = split_cols[1]
-
+            
+            # --- THIS IS THE CORRECTED, COMPLETE LIST OF COLUMNS ---
             display_cols_combo = [
-                'UTM Source', 'UTM Medium', 'Score', 'Grade', 'Total Qualified', 'PSA Count',
-                'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 'Qual to Enrollment %',
-                'ICF to Enrollment %', 'Qual -> ICF %', 'POF -> PSA %', 'PSA -> StS %',
-                'StS -> Appt %', 'Appt -> ICF %', 'Lag Qual -> ICF (Days)',
-                'Projection Lag (Days)', 'Screen Fail % (from ICF)'
+                'UTM Source', 'UTM Medium', 'Score', 'Grade',
+                'Total Qualified',
+                'Pre-Screening Activities Count',
+                'Sent To Site Count',
+                'Appointment Scheduled Count',
+                'Signed ICF Count',
+                'Enrollment Count',
+                'Qual to Enrollment %', 'ICF to Enrollment %', 'Qual -> ICF %',
+                'POF -> PSA %', 'PSA -> StS %', 'StS -> Appt %', 'Appt -> ICF %',
+                'Lag Qual -> ICF (Days)', 'Projection Lag (Days)', 'Screen Fail % (from ICF)'
             ]
             display_cols_combo_exist = [col for col in display_cols_combo if col in ranked_utm_combo_df.columns]
             
             if display_cols_combo_exist:
                 final_combo_display = ranked_utm_combo_df[display_cols_combo_exist]
-
                 if not final_combo_display.empty:
+                    rename_map = {
+                        'Pre-Screening Activities Count': 'PSA Count',
+                        'Sent To Site Count': 'StS Count',
+                        'Appointment Scheduled Count': 'Appt Count',
+                        'Signed ICF Count': 'ICF Count'
+                    }
+                    final_combo_display = final_combo_display.rename(columns=rename_map)
+
                     formatted_df = format_performance_df(final_combo_display)
                     st.dataframe(formatted_df, hide_index=True, use_container_width=True)
                     try:

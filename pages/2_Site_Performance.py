@@ -59,7 +59,6 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
     total_qualified = ranked_sites_df['Total Qualified'].sum() if 'Total Qualified' in ranked_sites_df else 0
     total_enrollments = ranked_sites_df['Enrollment Count'].sum() if 'Enrollment Count' in ranked_sites_df else 0
     total_icfs = ranked_sites_df['ICF Count'].sum() if 'ICF Count' in ranked_sites_df else 0
-    
     overall_qual_to_icf_rate = (total_icfs / total_qualified) * 100 if total_qualified > 0 else 0
 
     kpi_cols = st.columns(3)
@@ -75,18 +74,35 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
     with st.container(border=True):
         st.subheader("Site Performance Ranking")
         
+        # --- THIS IS THE CORRECTED, COMPLETE LIST OF COLUMNS ---
         display_cols = [
-            'Site', 'Score', 'Grade', 'Total Qualified', 'PSA Count', 'StS Count',
-            'Appt Count', 'ICF Count', 'Enrollment Count', 'Qual to Enrollment %',
-            'ICF to Enrollment %', 'Qual -> ICF %', 'POF -> PSA %', 'PSA -> StS %',
-            'StS -> Appt %', 'Appt -> ICF %', 'Avg TTC (Days)',
-            'Site Screen Fail %', 'Lag Qual -> ICF (Days)', 'Site Projection Lag (Days)'
+            'Site', 'Score', 'Grade', 
+            'Total Qualified', 
+            'Pre-Screening Activities Count',
+            'Sent To Site Count',
+            'Appointment Scheduled Count',
+            'Signed ICF Count',
+            'Enrollment Count', 
+            'Qual to Enrollment %', 'ICF to Enrollment %', 'Qual -> ICF %', 
+            'POF -> PSA %', 'PSA -> StS %', 'StS -> Appt %', 'Appt -> ICF %', 
+            'Avg TTC (Days)', 'Site Screen Fail %', 'Lag Qual -> ICF (Days)', 
+            'Site Projection Lag (Days)'
         ]
+        
         display_cols_exist = [col for col in display_cols if col in ranked_sites_df.columns]
         
         if display_cols_exist:
             final_display_df = ranked_sites_df[display_cols_exist]
             if not final_display_df.empty:
+                # Rename columns for better readability in the table header
+                rename_map = {
+                    'Pre-Screening Activities Count': 'PSA Count',
+                    'Sent To Site Count': 'StS Count',
+                    'Appointment Scheduled Count': 'Appt Count',
+                    'Signed ICF Count': 'ICF Count'
+                }
+                final_display_df = final_display_df.rename(columns=rename_map)
+                
                 formatted_df = format_performance_df(final_display_df)
                 st.dataframe(formatted_df, hide_index=True, use_container_width=True)
             else:
