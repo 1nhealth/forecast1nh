@@ -117,14 +117,35 @@ with st.expander("Optional Site Configurations"):
         
         st.divider()
 
-        # --- Monthly Qual Capacity by Site ---
+        # --- THIS IS THE CORRECTED AND COMPLETE SITE CAPS BLOCK ---
         st.markdown("##### Monthly Qual Capacity by Site")
         st.caption("Set a maximum number of 'Passed Online Form' (POF) leads a site can handle per month. Leave blank for no cap.")
-        site_caps_df_data = [{"Site": s, "Monthly POF Cap": None} for s in site_metrics['Site'].unique()]
+        
+        # 1. Pre-calculate the historical average POF per site per month
+        avg_monthly_pof_per_site = {}
+        pof_ts_col = ts_col_map.get(STAGE_PASSED_ONLINE_FORM)
+        if pof_ts_col and pof_ts_col in processed_data.columns and 'Site' in processed_data.columns:
+            # Filter for valid POF events and group by site and month
+            monthly_counts = processed_data.dropna(subset=[pof_ts_col]).groupby(['Site', 'Submission_Month']).size().reset_index(name='Count')
+            # Calculate the average of the monthly counts for each site
+            avg_counts = monthly_counts.groupby('Site')['Count'].mean().round(0).astype(int).to_dict()
+            avg_monthly_pof_per_site = avg_counts
+
+        # 2. Prepare the DataFrame for the data_editor
+        site_caps_data_list = []
+        for site_name in site_metrics['Site'].unique():
+            site_caps_data_list.append({
+                "Site": site_name,
+                "Historical Avg. Monthly POF": avg_monthly_pof_per_site.get(site_name, 0),
+                "Monthly POF Cap": np.nan # Use numpy NaN for an empty number cell
+            })
+        
+        # 3. Create the data_editor with the pre-calculated averages
         edited_caps_df = st.data_editor(
-            pd.DataFrame(site_caps_df_data),
+            pd.DataFrame(site_caps_data_list),
             column_config={
                 "Site": st.column_config.TextColumn(disabled=True),
+                "Historical Avg. Monthly POF": st.column_config.NumberColumn(format="%d", disabled=True, help="The historical average number of Qualified Leads this site received per month."),
                 "Monthly POF Cap": st.column_config.NumberColumn(min_value=0, step=1, format="%d")
             },
             hide_index=True, use_container_width=True, key="site_caps_editor"
@@ -132,6 +153,7 @@ with st.expander("Optional Site Configurations"):
         for _, row in edited_caps_df.iterrows():
             if pd.notna(row['Monthly POF Cap']):
                 site_caps[row['Site']] = int(row['Monthly POF Cap'])
+        # --- END OF CORRECTED BLOCK ---
     else:
         st.info("No site data available to configure.")
 
