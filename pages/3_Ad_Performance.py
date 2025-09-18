@@ -26,7 +26,7 @@ if not st.session_state.get('data_processed_successfully', False):
 
 # --- Synced Assumption Controls ---
 with st.expander("Adjust Performance Scoring Weights"):
-    # (Your slider code is correct and remains here)
+    # Each slider reads its default value from session_state and writes the new value back to session_state.
     st.session_state.w_qual_to_enroll = st.slider("Qual (POF) -> Enrollment %", 0, 100, st.session_state.w_qual_to_enroll, key="w_q_enr_ad")
     st.session_state.w_icf_to_enroll = st.slider("ICF -> Enrollment %", 0, 100, st.session_state.w_icf_to_enroll, key="w_icf_enr_ad")
     st.session_state.w_qual_to_icf = st.slider("Qual (POF) -> ICF %", 0, 100, st.session_state.w_qual_to_icf, key="w_q_icf_ad")
@@ -81,7 +81,6 @@ with st.container(border=True):
             group_col_name="UTM Source"
         )
 
-        # --- THIS IS THE CORRECTED, COMPLETE LIST OF COLUMNS ---
         display_cols_ad = [
             'UTM Source', 'Score', 'Grade',
             'Total Qualified',
@@ -103,11 +102,11 @@ with st.container(border=True):
                     'Pre-Screening Activities Count': 'PSA Count',
                     'Sent To Site Count': 'StS Count',
                     'Appointment Scheduled Count': 'Appt Count',
-                    'Signed ICF Count': 'ICF Count'
+                    'Signed ICF Count': 'ICF Count',
                     'Enrollment Count': 'Enrollments'
                 }
                 final_ad_display = final_ad_display.rename(columns=rename_map)
-                
+
                 formatted_df = format_performance_df(final_ad_display)
                 st.dataframe(formatted_df, hide_index=True, use_container_width=True)
                 try:
@@ -150,7 +149,6 @@ if "UTM Medium" in processed_data.columns:
                 ranked_utm_combo_df['UTM Source'] = split_cols[0]
                 ranked_utm_combo_df['UTM Medium'] = split_cols[1]
             
-            # --- THIS IS THE CORRECTED, COMPLETE LIST OF COLUMNS ---
             display_cols_combo = [
                 'UTM Source', 'UTM Medium', 'Score', 'Grade',
                 'Total Qualified',
@@ -172,7 +170,7 @@ if "UTM Medium" in processed_data.columns:
                         'Pre-Screening Activities Count': 'PSA Count',
                         'Sent To Site Count': 'StS Count',
                         'Appointment Scheduled Count': 'Appt Count',
-                        'Signed ICF Count': 'ICF Count'
+                        'Signed ICF Count': 'ICF Count',
                         'Enrollment Count': 'Enrollments'
                     }
                     final_combo_display = final_combo_display.rename(columns=rename_map)

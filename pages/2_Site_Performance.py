@@ -17,8 +17,6 @@ if not st.session_state.get('data_processed_successfully', False):
 
 # --- Synced Assumption Controls ---
 with st.expander("Adjust Performance Scoring Weights"):
-    # Each slider reads its default value from session_state and writes the new value back to session_state.
-    # This keeps them in sync with the sliders on the Ad Performance page.
     st.session_state.w_qual_to_enroll = st.slider("Qual (POF) -> Enrollment %", 0, 100, st.session_state.w_qual_to_enroll, key="w_q_enr_site")
     st.session_state.w_icf_to_enroll = st.slider("ICF -> Enrollment %", 0, 100, st.session_state.w_icf_to_enroll, key="w_icf_enr_site")
     st.session_state.w_qual_to_icf = st.slider("Qual (POF) -> ICF %", 0, 100, st.session_state.w_qual_to_icf, key="w_q_icf_site")
@@ -32,7 +30,6 @@ with st.expander("Adjust Performance Scoring Weights"):
     st.caption("Changes will apply automatically and be reflected on the Ad Performance page.")
 
 # --- Calculation Logic ---
-# Create the weights dictionary from the session state values, ensuring they exist.
 weights = {
     "Qual to Enrollment %": st.session_state.w_qual_to_enroll,
     "ICF to Enrollment %": st.session_state.w_icf_to_enroll,
@@ -74,7 +71,6 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
     with st.container(border=True):
         st.subheader("Site Performance Ranking")
         
-        # --- THIS IS THE CORRECTED, COMPLETE LIST OF COLUMNS ---
         display_cols = [
             'Site', 'Score', 'Grade', 
             'Total Qualified', 
@@ -99,7 +95,7 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
                     'Pre-Screening Activities Count': 'PSA Count',
                     'Sent To Site Count': 'StS Count',
                     'Appointment Scheduled Count': 'Appt Count',
-                    'Signed ICF Count': 'ICF Count'
+                    'Signed ICF Count': 'ICF Count',
                     'Enrollment Count': 'Enrollments'
                 }
                 final_display_df = final_display_df.rename(columns=rename_map)
