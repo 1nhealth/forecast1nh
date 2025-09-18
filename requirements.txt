@@ -2,3 +2,7 @@ streamlit
 pandas
 numpy
 scikit-learn
+google-generativeai
+matplotlib
+altair
+plotly
