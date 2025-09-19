@@ -9,7 +9,6 @@ def calculate_avg_lag_generic(df, col_from, col_to):
     """
     Safely calculates the average time lag in days between two datetime columns.
     """
-    # --- FIX: Check for None or invalid column names before proceeding ---
     if col_from is None or col_to is None or col_from not in df.columns or col_to not in df.columns:
         return np.nan
 
@@ -43,7 +42,7 @@ def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map
 
 def calculate_proforma_metrics(_processed_df, ordered_stages, ts_col_map, monthly_ad_spend_input):
     if _processed_df is None or _processed_df.empty: return pd.DataFrame()
-
+    
     processed_df = _processed_df.copy()
     
     cohort_summary = processed_df.groupby("Submission_Month").size().reset_index(name="Total Qualified Referrals_Calc")
@@ -93,6 +92,7 @@ def calculate_proforma_metrics(_processed_df, ordered_stages, ts_col_map, monthl
 
     return proforma_metrics
 
+
 def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_map, grouping_col: str, unclassified_label="Unclassified"):
     if _processed_df is None or _processed_df.empty: return pd.DataFrame()
 
@@ -101,39 +101,60 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
         df[grouping_col] = unclassified_label
     df[grouping_col] = df[grouping_col].astype(str).str.strip().replace('', unclassified_label).fillna(unclassified_label)
     
-    ts_cols = {stage: ts_col_map.get(stage) for stage in ordered_stages}
-    for col in ts_cols.values():
-        if col and col not in df.columns:
-            df[col] = pd.NaT
-            
+    # --- THIS IS THE CORRECTED LOGIC BLOCK ---
+    
+    # Define all possible stages that might have counts
+    all_possible_stages = [
+        STAGE_PASSED_ONLINE_FORM, STAGE_PRE_SCREENING_ACTIVITIES, STAGE_SENT_TO_SITE,
+        STAGE_APPOINTMENT_SCHEDULED, STAGE_SIGNED_ICF, STAGE_SCREEN_FAILED, STAGE_ENROLLED
+    ]
+    
+    # Ensure all possible timestamp columns exist, even if they are all null
+    for stage in all_possible_stages:
+        ts_col = ts_col_map.get(stage)
+        if ts_col and ts_col not in df.columns:
+            df[ts_col] = pd.NaT
+
     performance_metrics_list = []
     for group_name, group_df in df.groupby(grouping_col):
         metrics = {grouping_col: group_name}
         
-        counts = {stage: group_df[ts_cols[stage]].notna().sum() if ts_cols.get(stage) else 0 for stage in ordered_stages}
-        
+        # Calculate counts for each stage safely
+        counts = {}
+        for stage in all_possible_stages:
+            ts_col = ts_col_map.get(stage)
+            if ts_col and ts_col in group_df.columns:
+                counts[stage] = group_df[ts_col].notna().sum()
+            else:
+                counts[stage] = 0
+
+        # Assign counts to metrics dictionary with user-friendly names
         pof_count = counts.get(STAGE_PASSED_ONLINE_FORM, 0)
+        psa_count = counts.get(STAGE_PRE_SCREENING_ACTIVITIES, 0)
+        sts_count = counts.get(STAGE_SENT_TO_SITE, 0)
+        appt_count = counts.get(STAGE_APPOINTMENT_SCHEDULED, 0)
         icf_count = counts.get(STAGE_SIGNED_ICF, 0)
         sf_count = counts.get(STAGE_SCREEN_FAILED, 0)
         enrolled_count = counts.get(STAGE_ENROLLED, 0)
 
-        metrics.update({f"{stage} Count": count for stage, count in counts.items()})
         metrics['Total Qualified'] = pof_count
+        metrics['Pre-Screening Activities Count'] = psa_count
+        metrics['Sent To Site Count'] = sts_count
+        metrics['Appointment Scheduled Count'] = appt_count
+        metrics['Signed ICF Count'] = icf_count
+        metrics['Screen Failed Count'] = sf_count # Added for completeness
+        metrics['Enrollment Count'] = enrolled_count # This now correctly adds the column
 
-        for i in range(len(ordered_stages) - 1):
-            from_stage, to_stage = ordered_stages[i], ordered_stages[i+1]
-            from_count, to_count = counts.get(from_stage, 0), counts.get(to_stage, 0)
-            rate_name = f"{from_stage} -> {to_stage} %"
-            if from_stage == STAGE_PASSED_ONLINE_FORM and to_stage == STAGE_PRE_SCREENING_ACTIVITIES: rate_name = 'POF -> PSA %'
-            if from_stage == STAGE_PRE_SCREENING_ACTIVITIES and to_stage == STAGE_SENT_TO_SITE: rate_name = 'PSA -> StS %'
-            if from_stage == STAGE_SENT_TO_SITE and to_stage == STAGE_APPOINTMENT_SCHEDULED: rate_name = 'StS -> Appt %'
-            if from_stage == STAGE_APPOINTMENT_SCHEDULED and to_stage == STAGE_SIGNED_ICF: rate_name = 'Appt -> ICF %'
-            if from_stage == STAGE_SIGNED_ICF and to_stage == STAGE_ENROLLED: rate_name = 'ICF to Enrollment %'
-            metrics[rate_name] = (to_count / from_count) if from_count > 0 else 0.0
-        
+        # Calculate Conversion Rates
+        metrics['POF -> PSA %'] = (psa_count / pof_count) if pof_count > 0 else 0.0
+        metrics['PSA -> StS %'] = (sts_count / psa_count) if psa_count > 0 else 0.0
+        metrics['StS -> Appt %'] = (appt_count / sts_count) if sts_count > 0 else 0.0
+        metrics['Appt -> ICF %'] = (icf_count / appt_count) if appt_count > 0 else 0.0
+        metrics['ICF to Enrollment %'] = (enrolled_count / icf_count) if icf_count > 0 else 0.0
         metrics['Qual -> ICF %'] = (icf_count / pof_count) if pof_count > 0 else 0.0
         metrics['Qual to Enrollment %'] = (enrolled_count / pof_count) if pof_count > 0 else 0.0
         
+        # Screen Fail and Lag Metrics
         screen_fail_metric = 'Screen Fail % (from ICF)'
         projection_lag_metric = 'Projection Lag (Days)'
         if grouping_col == 'Site':
@@ -152,12 +173,12 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
         total_lag = 0
         valid_segments = 0
         for from_s, to_s in projection_segments:
-            lag = calculate_avg_lag_generic(group_df, ts_cols.get(from_s), ts_cols.get(to_s))
+            lag = calculate_avg_lag_generic(group_df, ts_col_map.get(from_s), ts_col_map.get(to_s))
             if pd.notna(lag):
                 total_lag += lag
                 valid_segments += 1
         metrics[projection_lag_metric] = total_lag if valid_segments == len(projection_segments) else np.nan
-        metrics['Lag Qual -> ICF (Days)'] = calculate_avg_lag_generic(group_df, ts_cols.get(STAGE_PASSED_ONLINE_FORM), ts_cols.get(STAGE_SIGNED_ICF))
+        metrics['Lag Qual -> ICF (Days)'] = calculate_avg_lag_generic(group_df, ts_col_map.get(STAGE_PASSED_ONLINE_FORM), ts_col_map.get(STAGE_SIGNED_ICF))
         
         if grouping_col == 'Site':
             metrics['Avg TTC (Days)'] = np.nan 
@@ -166,6 +187,7 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
         performance_metrics_list.append(metrics)
 
     return pd.DataFrame(performance_metrics_list)
+
 
 def calculate_site_metrics(_processed_df, ordered_stages, ts_col_map):
     if _processed_df is None or 'Site' not in _processed_df.columns:
