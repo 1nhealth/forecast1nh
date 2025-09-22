@@ -88,3 +88,38 @@ else:
             st.info(f"`{path}`")
             if i < len(top_flows) - 1:
                 st.divider()
+
+# --- TTFC Effectiveness ---
+st.header("Time to First Contact Effectiveness")
+st.markdown("Analyzes how the speed of the first contact impacts downstream funnel conversions.")
+
+if ttfc_df.empty or ttfc_df['Attempts'].sum() == 0:
+    st.info("Not enough data to analyze the effectiveness of first contact timing.")
+else:
+    # Format the dataframe for display
+    display_df = ttfc_df.copy()
+    display_df['StS Rate'] = display_df['StS_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+    display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+    display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+
+    # Rename columns for presentation
+    display_df.rename(columns={
+        'Total_StS': 'Total Sent to Site',
+        'Total_ICF': 'Total ICFs',
+        'Total_Enrolled': 'Total Enrollments'
+    }, inplace=True)
+    
+    # Select and order columns for the final view
+    final_cols = [
+        'Time to First Contact', 'Attempts',
+        'Total Sent to Site', 'StS Rate',
+        'Total ICFs', 'ICF Rate',
+        'Total Enrollments', 'Enrollment Rate'
+    ]
+    
+    with st.container(border=True):
+        st.dataframe(
+            display_df[final_cols],
+            hide_index=True,
+            use_container_width=True
+        )
