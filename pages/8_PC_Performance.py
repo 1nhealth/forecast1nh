@@ -2,9 +2,10 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+import numpy as np
 
-# Import the new calculation function
-from pc_calculations import calculate_heatmap_data
+# Import the new calculation functions
+from pc_calculations import calculate_heatmap_data, calculate_average_time_metrics
 
 # --- Page Configuration ---
 st.set_page_config(page_title="PC Performance", page_icon="📞", layout="wide")
@@ -24,12 +25,10 @@ if not st.session_state.get('data_processed_successfully', False):
 # --- Load Data from Session State ---
 processed_data = st.session_state.referral_data_processed
 ts_col_map = st.session_state.ts_col_map
-# We need the name of the parsed history column, which was defined in the processing step
 parsed_status_history_col = "Parsed_Lead_Status_History" 
 
 # --- Calculation ---
 with st.spinner("Analyzing status histories for PC activity..."):
-    # Check if the required history column exists
     if parsed_status_history_col not in processed_data.columns:
         st.error(f"The required column '{parsed_status_history_col}' was not found in the processed data.")
         st.info("This column is generated during the initial data processing step from the 'Lead Status History' column. Please ensure the source data contains this column.")
@@ -37,6 +36,12 @@ with st.spinner("Analyzing status histories for PC activity..."):
 
     contact_heatmap, sts_heatmap = calculate_heatmap_data(
         processed_data, 
+        ts_col_map,
+        parsed_status_history_col
+    )
+    
+    time_metrics = calculate_average_time_metrics(
+        processed_data,
         ts_col_map,
         parsed_status_history_col
     )
@@ -83,9 +88,30 @@ with col2:
 
 st.divider()
 
-# Placeholder for our next steps
+# --- Display KPIs ---
 st.header("Key Performance Indicators")
-st.markdown("_Average time to first contact and other metrics will be displayed here._")
+kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+
+with kpi_col1, st.container(border=True):
+    value = time_metrics.get('avg_time_to_first_contact')
+    st.metric(
+        label="Average Time to First Contact",
+        value=f"{value:.1f} Days" if pd.notna(value) else "N/A"
+    )
+
+with kpi_col2, st.container(border=True):
+    value = time_metrics.get('avg_time_between_contacts')
+    st.metric(
+        label="Average Time Between Contact Attempts",
+        value=f"{value:.1f} Days" if pd.notna(value) else "N/A"
+    )
+
+with kpi_col3, st.container(border=True):
+    value = time_metrics.get('avg_time_new_to_sts')
+    st.metric(
+        label="Average Time from New to Sent To Site",
+        value=f"{value:.1f} Days" if pd.notna(value) else "N/A"
+    )
 
 st.divider()
 
