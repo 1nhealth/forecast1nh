@@ -156,7 +156,7 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     result.rename(columns={'pre_sts_attempt_count': 'Number of Attempts', 'Referral_Count': 'Total Referrals'}, inplace=True)
     return result
 
-# --- THIS IS THE FINAL, UPDATED FUNCTION ---
+# --- THIS IS THE UPDATED FUNCTION ---
 def calculate_performance_over_time(df, ts_col_map):
     """
     Calculates key PC performance metrics over time on a weekly basis,
@@ -178,6 +178,10 @@ def calculate_performance_over_time(df, ts_col_map):
     time_df = df.set_index('Submitted On_DT')
 
     weekly_summary = time_df.resample('W').apply(lambda week_df: pd.Series({
+        # THIS IS THE NEW METRIC FOR THE SECONDARY AXIS
+        'Total Qualified per Week': (
+            len(week_df)
+        ),
         'Sent to Site % (Transit-Time Adjusted)': (
             week_df[week_df.index + pd.Timedelta(days=maturity_days) < pd.Timestamp.now()]
             .pipe(lambda mature_df: mature_df[sts_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0)
@@ -188,7 +192,6 @@ def calculate_performance_over_time(df, ts_col_map):
         'Average Sent to Site per Day': (
             week_df[sts_ts_col].notna().sum() / 7
         ),
-        # THIS IS THE NEW METRIC
         'Total Sent to Site per Week': (
             week_df[sts_ts_col].notna().sum()
         )
