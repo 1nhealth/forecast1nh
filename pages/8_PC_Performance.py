@@ -181,3 +181,22 @@ else:
     final_cols = ['Number of Attempts', 'Total Referrals', 'Total Sent to Site', 'StS Rate', 'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate']
     with st.container(border=True):
         st.dataframe(display_df[final_cols], hide_index=True, use_container_width=True)
+
+# --- NEW: Performance Over Time ---
+st.header("Performance Over Time (Weekly)")
+st.markdown("Track key metrics on a weekly basis to identify trends.")
+
+if over_time_df.empty:
+    st.info("Not enough data in the selected date range to generate a performance trend graph.")
+else:
+    with st.container(border=True):
+        # Let the user choose which metric to display
+        metric_to_plot = st.selectbox(
+            "Select a metric to display on the chart:",
+            options=over_time_df.columns.tolist() # The options are the metric names
+        )
+        
+        st.subheader(f"Weekly Trend for: {metric_to_plot}")
+        
+        # Display the line chart for the selected metric
+        st.line_chart(over_time_df[metric_to_plot])
