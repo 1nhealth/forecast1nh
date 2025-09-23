@@ -10,7 +10,7 @@ from pc_calculations import (
     calculate_average_time_metrics, 
     calculate_top_status_flows,
     calculate_ttfc_effectiveness,
-    calculate_contact_attempt_effectiveness # New function included
+    calculate_contact_attempt_effectiveness
 )
 from helpers import format_days_to_dhm
 
@@ -46,7 +46,6 @@ with st.spinner("Analyzing status histories for PC activity..."):
     time_metrics = calculate_average_time_metrics(processed_data, ts_col_map, parsed_status_history_col)
     top_flows = calculate_top_status_flows(processed_data, ts_col_map, parsed_status_history_col)
     ttfc_df = calculate_ttfc_effectiveness(processed_data, ts_col_map)
-    # Call the new calculation function for the final table
     attempt_effectiveness_df = calculate_contact_attempt_effectiveness(processed_data, ts_col_map, parsed_status_history_col)
 
 # --- Display Heatmaps ---
@@ -149,7 +148,10 @@ st.divider()
 st.header("Contact Attempt Effectiveness")
 st.markdown("Analyzes how the number of pre-site status changes impacts downstream funnel conversions.")
 
-if attempt_effectiveness_df.empty or attempt_effectiveness_df['Total Referrals'].sum() == 0:
+# THIS IS THE CORRECTED LOGIC BLOCK TO PREVENT THE KeyError
+if (attempt_effectiveness_df.empty or 
+    'Total Referrals' not in attempt_effectiveness_df.columns or 
+    attempt_effectiveness_df['Total Referrals'].sum() == 0):
     st.info("Not enough data to analyze the effectiveness of contact attempts.")
 else:
     display_df = attempt_effectiveness_df.copy()
@@ -157,17 +159,18 @@ else:
     display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
     display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
     display_df.rename(columns={
-        'Total_Referrals': 'Total Referrals',
         'Total_StS': 'Total Sent to Site',
         'Total_ICF': 'Total ICFs',
         'Total_Enrolled': 'Total Enrollments'
     }, inplace=True)
+    
     final_cols = [
         'Number of Attempts', 'Total Referrals',
         'Total Sent to Site', 'StS Rate',
         'Total ICFs', 'ICF Rate',
         'Total Enrollments', 'Enrollment Rate'
     ]
+    
     with st.container(border=True):
         st.dataframe(
             display_df[final_cols],
