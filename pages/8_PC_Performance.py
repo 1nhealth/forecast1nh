@@ -4,6 +4,8 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 from datetime import datetime, time
+import plotly.graph_objects as go # New import for advanced charts
+from plotly.subplots import make_subplots # New import for dual-axis
 
 # Import all calculation functions and the formatting helper
 from pc_calculations import (
@@ -165,7 +167,7 @@ else:
 
 st.divider()
 
-# --- Performance Over Time ---
+# --- THIS IS THE FINAL, UPDATED CHARTING SECTION ---
 st.header("Performance Over Time (Weekly)")
 st.markdown("Track key metrics on a weekly basis to identify trends.")
 
@@ -173,9 +175,45 @@ if over_time_df.empty:
     st.info("Not enough data in the selected date range to generate a performance trend graph.")
 else:
     with st.container(border=True):
-        metric_to_plot = st.selectbox(
-            "Select a metric to display on the chart:",
-            options=over_time_df.columns.tolist()
+        # The secondary axis metric is fixed
+        secondary_metric = 'Total Qualified per Week'
+        
+        # The user chooses the primary metric from all other available columns
+        primary_metric_options = [col for col in over_time_df.columns if col != secondary_metric]
+        primary_metric = st.selectbox(
+            "Select a primary metric to display on the chart:",
+            options=primary_metric_options
         )
-        st.subheader(f"Weekly Trend for: {metric_to_plot}")
-        st.line_chart(over_time_df[metric_to_plot])
+        
+        # Toggle to turn the secondary axis on or off
+        compare_with_volume = st.toggle(f"Compare with {secondary_metric}", value=True)
+        
+        # --- Charting Logic ---
+        # Create figure with secondary y-axis
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        # Add primary metric trace
+        fig.add_trace(
+            go.Scatter(x=over_time_df.index, y=over_time_df[primary_metric], name=primary_metric),
+            secondary_y=False,
+        )
+
+        # Add secondary metric trace if the toggle is on
+        if compare_with_volume:
+            fig.add_trace(
+                go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')),
+                secondary_y=True,
+            )
+
+        # Set y-axes titles
+        fig.update_yaxes(title_text=f"<b>{primary_metric}</b>", secondary_y=False)
+        if compare_with_volume:
+            fig.update_yaxes(title_text=f"<b>{secondary_metric}</b>", secondary_y=True, showgrid=False)
+
+        # Set figure layout
+        fig.update_layout(
+            title_text=f"Weekly Trend: {primary_metric}",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
