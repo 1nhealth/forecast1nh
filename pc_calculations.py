@@ -229,3 +229,57 @@ def calculate_ttfc_effectiveness(df, ts_col_map):
     result.rename(columns={'ttfc_bin': 'Time to First Contact'}, inplace=True)
     
     return result
+
+def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
+    """
+    Analyzes how the number of pre-StS contact attempts impacts downstream conversions.
+    """
+    if df is None or df.empty or ts_col_map is None:
+        return pd.DataFrame()
+
+    sts_ts_col = ts_col_map.get("Sent To Site")
+    if sts_ts_col not in df.columns or status_history_col not in df.columns:
+        return pd.DataFrame()
+
+    analysis_df = df.copy()
+
+    def count_pre_sts_statuses(row):
+        sts_timestamp = row[sts_ts_col]
+        history = row[status_history_col]
+
+        if not isinstance(history, list) or not history:
+            return 0
+        
+        # Filter for statuses that occurred before the StS timestamp.
+        # If StS is NaT, all statuses are considered "pre-StS".
+        pre_sts_history = [
+            event for event in history 
+            if pd.isna(sts_timestamp) or event[1] < sts_timestamp
+        ]
+        
+        # The number of attempts is the number of statuses after 'New'.
+        return max(0, len(pre_sts_history) - 1)
+
+    analysis_df['pre_sts_attempt_count'] = analysis_df.apply(count_pre_sts_statuses, axis=1)
+
+    # Get downstream columns for aggregation
+    icf_col = ts_col_map.get("Signed ICF")
+    enr_col = ts_col_map.get("Enrolled")
+
+    # Aggregate results by the number of attempts
+    result = analysis_df.groupby('pre_sts_attempt_count').agg(
+        Total_Referrals=('pre_sts_attempt_count', 'size'),
+        Total_StS=(sts_ts_col, lambda x: x.notna().sum()),
+        Total_ICF=(icf_col, lambda x: x.notna().sum()),
+        Total_Enrolled=(enr_col, lambda x: x.notna().sum())
+    )
+
+    # Calculate rates safely
+    result['StS_Rate'] = (result['Total_StS'] / result['Total_Referrals'].replace(0, np.nan))
+    result['ICF_Rate'] = (result['Total_ICF'] / result['Total_Referrals'].replace(0, np.nan))
+    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Total_Referrals'].replace(0, np.nan))
+    
+    result.reset_index(inplace=True)
+    result.rename(columns={'pre_sts_attempt_count': 'Number of Attempts'}, inplace=True)
+    
+    return result
