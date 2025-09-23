@@ -11,7 +11,8 @@ from pc_calculations import (
     calculate_average_time_metrics, 
     calculate_top_status_flows,
     calculate_ttfc_effectiveness,
-    calculate_contact_attempt_effectiveness
+    calculate_contact_attempt_effectiveness,
+    calculate_performance_over_time
 )
 from helpers import format_days_to_dhm
 
@@ -35,16 +36,12 @@ processed_data = st.session_state.referral_data_processed
 ts_col_map = st.session_state.ts_col_map
 parsed_status_history_col = "Parsed_Lead_Status_History" 
 
-# --- NEW: Date Filter ---
+# --- Date Filter ---
 st.divider()
 submission_date_col = "Submitted On_DT" 
-
 if submission_date_col in processed_data.columns:
-    # Get the overall date range from the data to set as filter defaults
     min_date = processed_data[submission_date_col].min().date()
     max_date = processed_data[submission_date_col].max().date()
-
-    # Create the date input widgets in a container
     with st.container(border=True):
         st.subheader("Filter Data by Submission Date")
         col1, col2 = st.columns(2)
@@ -52,34 +49,22 @@ if submission_date_col in processed_data.columns:
             start_date = st.date_input("Start Date", min_date, min_value=min_date, max_value=max_date)
         with col2:
             end_date = st.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
-
     if start_date > end_date:
         st.error("Error: Start date must be before end date.")
         st.stop()
-
-    # Convert dates to datetimes to properly filter the timestamp column
-    # Combine end_date with max time to ensure the entire day is included
     start_datetime = datetime.combine(start_date, time.min)
     end_datetime = datetime.combine(end_date, time.max)
-    
-    # Create the filtered DataFrame based on the selected date range
     filtered_df = processed_data[
         (processed_data[submission_date_col] >= start_datetime) &
         (processed_data[submission_date_col] <= end_datetime)
     ].copy()
-
     st.metric(label="Total Referrals in Selected Range", value=f"{len(filtered_df):,}")
-
 else:
     st.warning(f"Date column '{submission_date_col}' not found. Cannot apply date filter.")
-    # If the date column is missing, use the original unfiltered dataframe to prevent the app from crashing
     filtered_df = processed_data
-
 st.divider()
-# --- End of Date Filter ---
 
 # --- Calculation ---
-# All calculations now use the 'filtered_df' which is controlled by the date filter.
 with st.spinner("Analyzing status histories for PC activity in selected date range..."):
     if parsed_status_history_col not in filtered_df.columns:
         st.error(f"The required column '{parsed_status_history_col}' was not found in the processed data.")
@@ -90,6 +75,7 @@ with st.spinner("Analyzing status histories for PC activity in selected date ran
     top_flows = calculate_top_status_flows(filtered_df, ts_col_map, parsed_status_history_col)
     ttfc_df = calculate_ttfc_effectiveness(filtered_df, ts_col_map)
     attempt_effectiveness_df = calculate_contact_attempt_effectiveness(filtered_df, ts_col_map, parsed_status_history_col)
+    over_time_df = calculate_performance_over_time(filtered_df, ts_col_map)
 
 # --- Display Heatmaps ---
 st.header("Activity Heatmaps")
@@ -103,7 +89,6 @@ with col1, st.container(border=True):
         st.plotly_chart(fig1, use_container_width=True)
     else:
         st.info("No pre-StS contact attempt data found in the selected date range.")
-
 with col2, st.container(border=True):
     st.subheader("Sent To Site Events by Time of Day")
     if not sts_heatmap.empty and sts_heatmap.values.sum() > 0:
@@ -121,11 +106,9 @@ kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
 with kpi_col1, st.container(border=True):
     value = time_metrics.get('avg_time_to_first_contact')
     st.metric(label="Average Time to First Contact", value=format_days_to_dhm(value))
-
 with kpi_col2, st.container(border=True):
     value = time_metrics.get('avg_time_between_contacts')
     st.metric(label="Average Time Between Contact Attempts", value=format_days_to_dhm(value))
-
 with kpi_col3, st.container(border=True):
     value = time_metrics.get('avg_time_new_to_sts')
     st.metric(label="Average Time from New to Sent To Site", value=format_days_to_dhm(value))
@@ -149,7 +132,6 @@ st.divider()
 # --- TTFC Effectiveness ---
 st.header("Time to First Contact Effectiveness")
 st.markdown("Analyzes how the speed of the first contact impacts downstream funnel conversions.")
-
 if ttfc_df.empty or ttfc_df['Attempts'].sum() == 0:
     st.info("Not enough data in the selected date range to analyze the effectiveness of first contact timing.")
 else:
@@ -167,7 +149,6 @@ st.divider()
 # --- Contact Attempt Effectiveness ---
 st.header("Contact Attempt Effectiveness")
 st.markdown("Analyzes how the number of pre-site status changes impacts downstream funnel conversions.")
-
 if (attempt_effectiveness_df.empty or 
     'Total Referrals' not in attempt_effectiveness_df.columns or 
     attempt_effectiveness_df['Total Referrals'].sum() == 0):
@@ -182,7 +163,9 @@ else:
     with st.container(border=True):
         st.dataframe(display_df[final_cols], hide_index=True, use_container_width=True)
 
-# --- NEW: Performance Over Time ---
+st.divider()
+
+# --- Performance Over Time ---
 st.header("Performance Over Time (Weekly)")
 st.markdown("Track key metrics on a weekly basis to identify trends.")
 
@@ -190,13 +173,9 @@ if over_time_df.empty:
     st.info("Not enough data in the selected date range to generate a performance trend graph.")
 else:
     with st.container(border=True):
-        # Let the user choose which metric to display
         metric_to_plot = st.selectbox(
             "Select a metric to display on the chart:",
-            options=over_time_df.columns.tolist() # The options are the metric names
+            options=over_time_df.columns.tolist()
         )
-        
         st.subheader(f"Weekly Trend for: {metric_to_plot}")
-        
-        # Display the line chart for the selected metric
         st.line_chart(over_time_df[metric_to_plot])
