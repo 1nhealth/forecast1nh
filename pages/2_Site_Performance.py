@@ -3,7 +3,11 @@ import streamlit as st
 import pandas as pd
 from scoring import score_sites
 from helpers import format_performance_df, format_days_to_dhm
-from calculations import calculate_site_operational_kpis, calculate_site_ttfc_effectiveness
+from calculations import (
+    calculate_site_operational_kpis, 
+    calculate_site_ttfc_effectiveness,
+    calculate_site_contact_effectiveness # New import
+)
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -41,25 +45,13 @@ with st.container(border=True):
     kpi_cols = st.columns(3)
     with kpi_cols[0]:
         value = site_kpis.get('avg_sts_to_first_action')
-        st.metric(
-            label="Avg. Time to First Site Action",
-            value=format_days_to_dhm(value),
-            help="Time from when a lead is 'Sent To Site' until the site takes any follow-up action (e.g., status change, appointment scheduled)."
-        )
+        st.metric(label="Avg. Time to First Site Action", value=format_days_to_dhm(value), help="Time from 'Sent To Site' until the site takes any follow-up action.")
     with kpi_cols[1]:
         value = site_kpis.get('avg_time_between_site_contacts')
-        st.metric(
-            label="Avg. Time Between Site Contacts",
-            value=format_days_to_dhm(value),
-            help="The average time between explicit 'Contact Attempts' made by a site before an appointment is scheduled."
-        )
+        st.metric(label="Avg. Time Between Site Contacts", value=format_days_to_dhm(value), help="The average time between explicit 'Contact Attempts' by a site before an appointment is scheduled.")
     with kpi_cols[2]:
         value = site_kpis.get('avg_sts_to_appt')
-        st.metric(
-            label="Avg. Time StS to Appt. Sched.",
-            value=format_days_to_dhm(value),
-            help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
-        )
+        st.metric(label="Avg. Time StS to Appt. Sched.", value=format_days_to_dhm(value), help="The average total time from 'Sent to Site' until an appointment is successfully scheduled.")
 
     st.divider()
     st.subheader(f"Time to First Action Effectiveness: {selected_site}")
@@ -77,16 +69,39 @@ with st.container(border=True):
         display_df['Appt. Rate'] = display_df['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        display_df.rename(columns={'Attempts': 'Total Referrals', 'Total_Appts': 'Total Appointments', 'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'}, inplace=True)
+        final_cols = ['Time to First Site Action', 'Total Referrals', 'Total Appointments', 'Appt. Rate', 'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate']
+        st.dataframe(display_df[final_cols], hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # --- NEW: Site Contact Attempt Effectiveness Table ---
+    st.subheader(f"Contact Attempt Effectiveness (StS to Appt.): {selected_site}")
+    
+    site_contact_df = calculate_site_contact_effectiveness(
+        st.session_state.referral_data_processed,
+        st.session_state.ts_col_map,
+        "Parsed_Lead_Status_History",
+        selected_site
+    )
+
+    if site_contact_df.empty or site_contact_df['Total_Referrals'].sum() == 0:
+        st.info(f"Not enough data for '{selected_site}' to analyze contact attempt effectiveness.")
+    else:
+        display_df = site_contact_df.copy()
+        display_df['Appt. Rate'] = display_df['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         
         display_df.rename(columns={
-            'Attempts': 'Total Referrals',
+            'Total_Referrals': 'Total Referrals',
             'Total_Appts': 'Total Appointments',
             'Total_ICF': 'Total ICFs',
             'Total_Enrolled': 'Total Enrollments'
         }, inplace=True)
         
         final_cols = [
-            'Time to First Site Action', 'Total Referrals',
+            'Number of Site Attempts (Pre-Appt.)', 'Total Referrals',
             'Total Appointments', 'Appt. Rate',
             'Total ICFs', 'ICF Rate',
             'Total Enrollments', 'Enrollment Rate'
