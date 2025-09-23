@@ -122,7 +122,7 @@ def calculate_ttfc_effectiveness(df, ts_col_map):
     result.rename(columns={'ttfc_bin': 'Time to First Contact'}, inplace=True)
     return result
 
-# --- THIS IS THE CORRECTED FUNCTION ---
+# --- THIS IS THE FINAL CORRECTED FUNCTION ---
 def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     """
     Analyzes how the number of pre-StS status changes impacts downstream conversions.
@@ -136,33 +136,29 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
 
     analysis_df = df.copy()
 
-    # THIS INTERNAL FUNCTION CONTAINS THE FIX
-    def count_pre_sts_statuses(row):
+    # THIS INTERNAL FUNCTION CONTAINS THE CORRECTED LOGIC
+    def count_pre_sts_attempts(row):
         sts_timestamp = row[sts_ts_col]
         history = row[status_history_col]
 
         if not isinstance(history, list) or not history:
             return 0
         
-        # We need the timestamp of the very first event to compare against
-        first_event_ts = history[0][1]
-
-        # Case 1: The referral HAS been sent to site.
-        if pd.notna(sts_timestamp):
-            # Count statuses strictly BEFORE the StS timestamp.
-            intermediate_statuses = [
-                event for event in history 
-                if event[1] > first_event_ts and event[1] < sts_timestamp
-            ]
-            # A direct POF -> StS is 1 attempt. Any other journey is 1 + intermediate steps.
-            return 1 + len(intermediate_statuses)
+        # This is the path of statuses taken *before* the referral was sent to site.
+        # This correctly handles referrals that have not been sent to site yet.
+        pre_sts_path = [
+            event for event in history 
+            if pd.isna(sts_timestamp) or event[1] < sts_timestamp
+        ]
         
-        # Case 2: The referral has NOT been sent to site.
-        else:
-            # Count all statuses after the very first one.
-            return max(0, len(history) - 1)
+        # The number of attempts is the number of intermediate statuses.
+        # len(pre_sts_path) will be at least 1 if the lead exists ('New' status).
+        # A path of ['New'] means 0 attempts.
+        # A path of ['New', 'Contact Attempt 1'] means 1 attempt.
+        # This matches the logic: New -> Step 1 -> StS = 1 attempt.
+        return max(0, len(pre_sts_path) - 1)
 
-    analysis_df['pre_sts_attempt_count'] = analysis_df.apply(count_pre_sts_statuses, axis=1)
+    analysis_df['pre_sts_attempt_count'] = analysis_df.apply(count_pre_sts_attempts, axis=1)
 
     icf_col = ts_col_map.get("Signed ICF")
     enr_col = ts_col_map.get("Enrolled")
