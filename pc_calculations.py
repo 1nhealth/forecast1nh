@@ -122,41 +122,68 @@ def calculate_ttfc_effectiveness(df, ts_col_map):
     result.rename(columns={'ttfc_bin': 'Time to First Contact'}, inplace=True)
     return result
 
+# --- THIS IS THE FINAL CORRECTED FUNCTION ---
 def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     """
     Analyzes how the number of pre-StS status changes impacts downstream conversions.
     """
-    if df is None or df.empty or ts_col_map is None: return pd.DataFrame()
+    if df is None or df.empty or ts_col_map is None:
+        return pd.DataFrame()
+
     sts_ts_col = ts_col_map.get("Sent To Site")
-    if sts_ts_col not in df.columns or status_history_col not in df.columns: return pd.DataFrame()
+    if sts_ts_col not in df.columns or status_history_col not in df.columns:
+        return pd.DataFrame()
+
     analysis_df = df.copy()
+
+    # THIS INTERNAL FUNCTION CONTAINS THE CORRECTED LOGIC
     def count_pre_sts_attempts(row):
         sts_timestamp = row[sts_ts_col]
         history = row[status_history_col]
-        if not isinstance(history, list) or not history: return 0
-        first_event_ts = history[0][1]
-        if pd.notna(sts_timestamp):
-            intermediate_statuses = [event for event in history if event[1] > first_event_ts and event[1] < sts_timestamp]
-            return 1 + len(intermediate_statuses)
-        else:
-            return max(0, len(history) - 1)
+
+        if not isinstance(history, list) or not history:
+            return 0
+        
+        # This is the path of statuses taken *before* the referral was sent to site.
+        # This correctly handles referrals that have not been sent to site yet.
+        pre_sts_path = [
+            event for event in history 
+            if pd.isna(sts_timestamp) or event[1] < sts_timestamp
+        ]
+        
+        # The number of attempts is the number of intermediate statuses.
+        # A path of ['New'] means 0 attempts.
+        # A path of ['New', 'Contact Attempt 1'] means 1 attempt.
+        # This matches the logic: New -> Step 1 -> StS = 1 attempt.
+        return max(0, len(pre_sts_path) - 1)
+
     analysis_df['pre_sts_attempt_count'] = analysis_df.apply(count_pre_sts_attempts, axis=1)
+
     icf_col = ts_col_map.get("Signed ICF")
     enr_col = ts_col_map.get("Enrolled")
+
+    # Aggregate results by the number of attempts
     result = analysis_df.groupby('pre_sts_attempt_count').agg(
         Referral_Count=('pre_sts_attempt_count', 'size'),
         Total_StS=(sts_ts_col, lambda x: x.notna().sum()),
         Total_ICF=(icf_col, lambda x: x.notna().sum()),
         Total_Enrolled=(enr_col, lambda x: x.notna().sum())
     )
+
+    # Calculate rates safely
     result['StS_Rate'] = (result['Total_StS'] / result['Referral_Count'].replace(0, np.nan))
     result['ICF_Rate'] = (result['Total_ICF'] / result['Referral_Count'].replace(0, np.nan))
     result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Referral_Count'].replace(0, np.nan))
+    
     result.reset_index(inplace=True)
-    result.rename(columns={'pre_sts_attempt_count': 'Number of Attempts', 'Referral_Count': 'Total Referrals'}, inplace=True)
+    
+    result.rename(columns={
+        'pre_sts_attempt_count': 'Number of Attempts',
+        'Referral_Count': 'Total Referrals'
+    }, inplace=True)
+    
     return result
 
-# --- THIS IS THE UPDATED FUNCTION ---
 def calculate_performance_over_time(df, ts_col_map):
     """
     Calculates key PC performance metrics over time on a weekly basis,
@@ -178,7 +205,6 @@ def calculate_performance_over_time(df, ts_col_map):
     time_df = df.set_index('Submitted On_DT')
 
     weekly_summary = time_df.resample('W').apply(lambda week_df: pd.Series({
-        # THIS IS THE NEW METRIC FOR THE SECONDARY AXIS
         'Total Qualified per Week': (
             len(week_df)
         ),
