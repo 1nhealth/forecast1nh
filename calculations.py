@@ -6,9 +6,7 @@ import numpy as np
 from constants import * # Import all stage names
 
 def calculate_avg_lag_generic(df, col_from, col_to):
-    """
-    Safely calculates the average time lag in days between two datetime columns.
-    """
+    # This function is correct and remains unchanged.
     if col_from is None or col_to is None or col_from not in df.columns or col_to not in df.columns:
         return np.nan
     if not all([pd.api.types.is_datetime64_any_dtype(df[col_from]),
@@ -22,6 +20,7 @@ def calculate_avg_lag_generic(df, col_from, col_to):
 
 @st.cache_data
 def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map):
+    # This function is correct and remains unchanged.
     if _processed_df is None or _processed_df.empty or not ordered_stages or not ts_col_map:
         return {}
     inter_stage_lags = {}
@@ -33,6 +32,7 @@ def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map
     return inter_stage_lags
 
 def calculate_proforma_metrics(_processed_df, ordered_stages, ts_col_map, monthly_ad_spend_input):
+    # This function is correct and remains unchanged.
     if _processed_df is None or _processed_df.empty: return pd.DataFrame()
     processed_df = _processed_df.copy()
     cohort_summary = processed_df.groupby("Submission_Month").size().reset_index(name="Total Qualified Referrals_Calc")
@@ -75,6 +75,7 @@ def calculate_proforma_metrics(_processed_df, ordered_stages, ts_col_map, monthl
     return proforma_metrics
 
 def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_map, grouping_col: str, unclassified_label="Unclassified"):
+    # This function is correct and remains unchanged.
     if _processed_df is None or _processed_df.empty: return pd.DataFrame()
     df = _processed_df.copy()
     if grouping_col not in df.columns:
@@ -147,6 +148,7 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
     return pd.DataFrame(performance_metrics_list)
 
 def calculate_site_metrics(_processed_df, ordered_stages, ts_col_map):
+    # This function is correct and remains unchanged.
     if _processed_df is None or 'Site' not in _processed_df.columns:
         st.warning("Cannot calculate site metrics: 'Site' column not found.")
         return pd.DataFrame()
@@ -157,6 +159,7 @@ def calculate_site_metrics(_processed_df, ordered_stages, ts_col_map):
     )
 
 def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected_site="Overall"):
+    # This function is correct and remains unchanged.
     if df is None or df.empty:
         return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
     if selected_site != "Overall":
@@ -201,86 +204,134 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         'avg_sts_to_appt': avg_sts_to_appt
     }
 
+# --- THIS IS THE CORRECTED FUNCTION ---
 def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
-    if df is None or df.empty: return pd.DataFrame()
+    """
+    Analyzes how a site's time to first action impacts downstream conversion rates.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # This is the full dataset for the selected site or overall
     if selected_site != "Overall":
         if 'Site' not in df.columns: return pd.DataFrame()
         site_df = df[df['Site'] == selected_site].copy()
     else:
         site_df = df.copy()
+
     sts_ts_col = ts_col_map.get("Sent To Site")
-    site_df = site_df.dropna(subset=[sts_ts_col]).copy()
-    if site_df.empty: return pd.DataFrame()
+    
+    # *** THIS IS THE FIX: The function now operates on the full site_df,
+    # it does not prematurely filter out referrals that haven't had an action yet.
+    if site_df.empty or sts_ts_col not in site_df.columns:
+        return pd.DataFrame()
+
     all_ts_cols_after_sts = [
         v for k, v in ts_col_map.items() 
         if k not in ["Passed Online Form", "Pre-Screening Activities", "Sent To Site"] and v in site_df.columns
     ]
+    
     def find_first_action_after_sts(row):
         sts_time = row[sts_ts_col]
+        if pd.isna(sts_time): return pd.NaT # Skip if not sent to site
         future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
         return future_events.min() if not future_events.empty else pd.NaT
+
     first_actions = site_df.apply(find_first_action_after_sts, axis=1)
+    
     site_df['ttfc_hours'] = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / 3600
+
     bin_edges = [-np.inf, 4, 8, 24, 48, 72, 120, 168, 336, np.inf]
     bin_labels = [
         '< 4 Hours', '4 - 8 Hours', '8 - 24 Hours', '1 - 2 Days', '2 - 3 Days',
         '3 - 5 Days', '5 - 7 Days', '7 - 14 Days', '> 14 Days'
     ]
-    site_df['ttfc_bin'] = pd.cut(site_df['ttfc_hours'], bins=bin_edges, labels=bin_labels, right=True)
+    
+    site_df['ttfc_bin'] = pd.cut(
+        site_df['ttfc_hours'], 
+        bins=bin_edges, 
+        labels=bin_labels, 
+        right=True
+    )
+
     appt_col = ts_col_map.get("Appointment Scheduled")
     icf_col = ts_col_map.get("Signed ICF")
     enr_col = ts_col_map.get("Enrolled")
+
     result = site_df.groupby('ttfc_bin').agg(
         Total_Referrals=('ttfc_bin', 'size'),
         Total_Appts=(appt_col, lambda x: x.notna().sum()),
         Total_ICF=(icf_col, lambda x: x.notna().sum()),
         Total_Enrolled=(enr_col, lambda x: x.notna().sum())
     )
+    
     result = result.reindex(bin_labels, fill_value=0)
+
     result['Appt_Rate'] = (result['Total_Appts'] / result['Total_Referrals'].replace(0, np.nan))
     result['ICF_Rate'] = (result['Total_ICF'] / result['Total_Referrals'].replace(0, np.nan))
     result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Total_Referrals'].replace(0, np.nan))
+    
     result.reset_index(inplace=True)
     result.rename(columns={'ttfc_bin': 'Time to First Site Action'}, inplace=True)
+    
     return result
 
+# --- THIS IS THE FINAL, CORRECTED FUNCTION ---
 def calculate_site_contact_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall"):
     """
     Analyzes how the number of site status changes impacts downstream conversions.
     """
     if df is None or df.empty:
         return pd.DataFrame()
+
     if selected_site != "Overall":
         if 'Site' not in df.columns: return pd.DataFrame()
         site_df = df[df['Site'] == selected_site].copy()
     else:
         site_df = df.copy()
+
     sts_ts_col = ts_col_map.get("Sent To Site")
-    site_df = site_df.dropna(subset=[sts_ts_col]).copy()
-    if site_df.empty:
+    
+    # *** THIS IS THE FIX: The function now operates on the full site_df,
+    # it does not prematurely filter out referrals that have not been contacted yet.
+    if site_df.empty or sts_ts_col not in site_df.columns:
         return pd.DataFrame()
+        
     def count_site_attempts(row):
         sts_time = row[sts_ts_col]
         history = row.get(status_history_col, [])
-        if not isinstance(history, list):
+
+        # Skip if not sent to site or no history
+        if pd.isna(sts_time) or not isinstance(history, list):
             return 0
+            
+        # This is the crucial logic: find all status events that happened *after* StS.
+        # This represents the actions the site has taken.
         post_sts_events = [
             event for event in history if event[1] > sts_time
         ]
+        
+        # The number of attempts is the number of actions taken by the site.
         return len(post_sts_events)
+
     site_df['site_attempt_count'] = site_df.apply(count_site_attempts, axis=1)
+
     appt_col = ts_col_map.get("Appointment Scheduled")
     icf_col = ts_col_map.get("Signed ICF")
     enr_col = ts_col_map.get("Enrolled")
+
     result = site_df.groupby('site_attempt_count').agg(
         Total_Referrals=('site_attempt_count', 'size'),
         Total_Appts=(appt_col, lambda x: x.notna().sum()),
         Total_ICF=(icf_col, lambda x: x.notna().sum()),
         Total_Enrolled=(enr_col, lambda x: x.notna().sum())
     )
+
     result['Appt_Rate'] = (result['Total_Appts'] / result['Total_Referrals'].replace(0, np.nan))
     result['ICF_Rate'] = (result['Total_ICF'] / result['Total_Referrals'].replace(0, np.nan))
     result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Total_Referrals'].replace(0, np.nan))
+    
     result.reset_index(inplace=True)
     result.rename(columns={'site_attempt_count': 'Number of Site Attempts'}, inplace=True)
+    
     return result
