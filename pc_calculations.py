@@ -144,16 +144,23 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
         if not isinstance(history, list) or not history:
             return 0
         
-        # *** THE FIX: Use <= to correctly include all statuses in the journey ***
-        # For referrals that HAVE been sent to site, count all statuses up to and including that point.
+        # We need the timestamp of the very first event to compare against
+        first_event_ts = history[0][1]
+
+        # Case 1: The referral HAS been sent to site.
         if pd.notna(sts_timestamp):
-            pre_sts_history = [event for event in history if event[1] <= sts_timestamp]
-        # For referrals that HAVE NOT been sent, count all statuses in their history.
-        else:
-            pre_sts_history = history
+            # Count statuses strictly BEFORE the StS timestamp.
+            intermediate_statuses = [
+                event for event in history 
+                if event[1] > first_event_ts and event[1] < sts_timestamp
+            ]
+            # A direct POF -> StS is 1 attempt. Any other journey is 1 + intermediate steps.
+            return 1 + len(intermediate_statuses)
         
-        # The number of attempts/steps is the number of statuses after 'New'.
-        return max(0, len(pre_sts_history) - 1)
+        # Case 2: The referral has NOT been sent to site.
+        else:
+            # Count all statuses after the very first one.
+            return max(0, len(history) - 1)
 
     analysis_df['pre_sts_attempt_count'] = analysis_df.apply(count_pre_sts_statuses, axis=1)
 
