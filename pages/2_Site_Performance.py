@@ -3,11 +3,7 @@ import streamlit as st
 import pandas as pd
 from scoring import score_sites
 from helpers import format_performance_df, format_days_to_dhm
-from calculations import (
-    calculate_site_operational_kpis, 
-    calculate_site_ttfc_effectiveness,
-    calculate_site_contact_effectiveness
-)
+from calculations import calculate_site_operational_kpis, calculate_site_ttfc_effectiveness
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -74,7 +70,7 @@ with st.container(border=True):
         selected_site
     )
 
-    if site_effectiveness_df.empty or 'Total Referrals' not in site_effectiveness_df.columns or site_effectiveness_df['Total Referrals'].sum() == 0:
+    if site_effectiveness_df.empty or site_effectiveness_df['Attempts'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze first action effectiveness.")
     else:
         display_df = site_effectiveness_df.copy()
@@ -82,8 +78,8 @@ with st.container(border=True):
         display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         
-        # This rename step is no longer needed for the 'Attempts' column.
         display_df.rename(columns={
+            'Attempts': 'Total Referrals',
             'Total_Appts': 'Total Appointments',
             'Total_ICF': 'Total ICFs',
             'Total_Enrolled': 'Total Enrollments'
@@ -91,44 +87,6 @@ with st.container(border=True):
         
         final_cols = [
             'Time to First Site Action', 'Total Referrals',
-            'Total Appointments', 'Appt. Rate',
-            'Total ICFs', 'ICF Rate',
-            'Total Enrollments', 'Enrollment Rate'
-        ]
-        
-        st.dataframe(
-            display_df[final_cols],
-            hide_index=True,
-            use_container_width=True
-        )
-
-    st.divider()
-
-    st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
-    
-    site_contact_df = calculate_site_contact_effectiveness(
-        st.session_state.referral_data_processed,
-        st.session_state.ts_col_map,
-        "Parsed_Lead_Status_History",
-        selected_site
-    )
-
-    if site_contact_df.empty or 'Total Referrals' not in site_contact_df.columns or site_contact_df['Total Referrals'].sum() == 0:
-        st.info(f"Not enough data for '{selected_site}' to analyze contact attempt effectiveness.")
-    else:
-        display_df = site_contact_df.copy()
-        display_df['Appt. Rate'] = display_df['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
-        display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
-        display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
-        
-        display_df.rename(columns={
-            'Total_Appts': 'Total Appointments',
-            'Total_ICF': 'Total ICFs',
-            'Total_Enrolled': 'Total Enrollments'
-        }, inplace=True)
-        
-        final_cols = [
-            'Number of Site Attempts', 'Total Referrals',
             'Total Appointments', 'Appt. Rate',
             'Total ICFs', 'ICF Rate',
             'Total Enrollments', 'Enrollment Rate'
