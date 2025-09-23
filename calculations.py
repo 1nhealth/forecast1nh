@@ -251,7 +251,11 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         'avg_sts_to_appt': avg_sts_to_appt
     }
 
+# --- THIS IS THE FINAL, CORRECTED FUNCTION ---
 def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
+    """
+    Analyzes how a site's time to first action impacts downstream conversion rates.
+    """
     if df is None or df.empty:
         return pd.DataFrame()
 
@@ -266,10 +270,9 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     if site_df.empty or sts_ts_col not in site_df.columns:
         return pd.DataFrame()
 
-    analysis_df = site_df.dropna(subset=[sts_ts_col]).copy()
-    if analysis_df.empty:
-        return pd.DataFrame()
-
+    # Create a working copy for analysis. Critically, we do NOT filter out rows yet.
+    analysis_df = site_df.copy()
+    
     all_ts_cols_after_sts = [
         v for k, v in ts_col_map.items() 
         if k not in ["Passed Online Form", "Pre-Screening Activities", "Sent To Site"] and v in analysis_df.columns
@@ -277,6 +280,7 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     
     def find_first_action_after_sts(row):
         sts_time = row[sts_ts_col]
+        if pd.isna(sts_time): return pd.NaT # Skip if not sent to site
         future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
         return future_events.min() if not future_events.empty else pd.NaT
 
@@ -302,7 +306,7 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     enr_col = ts_col_map.get("Enrolled")
 
     result = analysis_df.groupby('ttfc_bin').agg(
-        Attempts=('ttfc_bin', 'size'),
+        Total_Referrals=('ttfc_bin', 'size'),
         Total_Appts=(appt_col, lambda x: x.notna().sum()),
         Total_ICF=(icf_col, lambda x: x.notna().sum()),
         Total_Enrolled=(enr_col, lambda x: x.notna().sum())
@@ -310,9 +314,9 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     
     result = result.reindex(bin_labels, fill_value=0)
 
-    result['Appt_Rate'] = (result['Total_Appts'] / result['Attempts'].replace(0, np.nan))
-    result['ICF_Rate'] = (result['Total_ICF'] / result['Attempts'].replace(0, np.nan))
-    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Attempts'].replace(0, np.nan))
+    result['Appt_Rate'] = (result['Total_Appts'] / result['Total_Referrals'].replace(0, np.nan))
+    result['ICF_Rate'] = (result['Total_ICF'] / result['Total_Referrals'].replace(0, np.nan))
+    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Total_Referrals'].replace(0, np.nan))
     
     result.reset_index(inplace=True)
     result.rename(columns={'ttfc_bin': 'Time to First Site Action'}, inplace=True)
@@ -345,34 +349,14 @@ def calculate_site_contact_effectiveness(df, ts_col_map, status_history_col, sel
         if pd.isna(sts_time) or not isinstance(history, list):
             return np.nan # Use NaN for rows that are not eligible
             
-        # Define the terminal outcome stages for a site
-        site_outcome_stages = [
-            ts_col_map.get(stage) for stage in 
-            ["Appointment Scheduled", "Signed ICF", "Screen Failed", "Enrolled", "Lost"]
-            if ts_col_map.get(stage) in row.index
+        # This is the crucial logic: find all status events that happened *after* StS.
+        # This represents the actions the site has taken.
+        post_sts_events = [
+            event for event in history if event[1] > sts_time
         ]
         
-        # Find the timestamp of the first terminal outcome after StS
-        outcome_times = [row[col] for col in site_outcome_stages if pd.notna(row[col]) and row[col] > sts_time]
-        first_outcome_time = min(outcome_times) if outcome_times else pd.Timestamp.max
-
-        # Count intermediate statuses that occur between StS and the outcome
-        intermediate_events = [
-            event for event in history 
-            if event[1] > sts_time and event[1] < first_outcome_time
-        ]
-        num_intermediate = len(intermediate_events)
-
-        # Apply the final logic
-        if first_outcome_time != pd.Timestamp.max:
-            # If there's an outcome, it's at least 1 attempt cycle
-            # which is the number of intermediate steps.
-            # StS -> Appt = 0 intermediate = 1 attempt
-            # StS -> Step 1 -> Appt = 1 intermediate = 1 attempt
-            return num_intermediate
-        else:
-            # If no outcome, the number of attempts is just the intermediate steps taken so far
-            return num_intermediate
+        # The number of attempts is the number of actions taken by the site.
+        return len(post_sts_events)
 
     site_df['site_attempt_count'] = site_df.apply(count_site_attempts, axis=1)
     
