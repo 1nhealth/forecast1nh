@@ -45,13 +45,25 @@ with st.container(border=True):
     kpi_cols = st.columns(3)
     with kpi_cols[0]:
         value = site_kpis.get('avg_sts_to_first_action')
-        st.metric(label="Avg. Time to First Site Action", value=format_days_to_dhm(value), help="Time from 'Sent To Site' until the site takes any follow-up action.")
+        st.metric(
+            label="Avg. Time to First Site Action",
+            value=format_days_to_dhm(value),
+            help="Time from when a lead is 'Sent To Site' until the site takes any follow-up action (e.g., status change, appointment scheduled)."
+        )
     with kpi_cols[1]:
         value = site_kpis.get('avg_time_between_site_contacts')
-        st.metric(label="Avg. Time Between Site Contacts", value=format_days_to_dhm(value), help="The average time between explicit 'Contact Attempts' by a site before an appointment is scheduled.")
+        st.metric(
+            label="Avg. Time Between Site Contacts",
+            value=format_days_to_dhm(value),
+            help="The average time between explicit 'Contact Attempts' made by a site before an appointment is scheduled."
+        )
     with kpi_cols[2]:
         value = site_kpis.get('avg_sts_to_appt')
-        st.metric(label="Avg. Time StS to Appt. Sched.", value=format_days_to_dhm(value), help="The average total time from 'Sent to Site' until an appointment is successfully scheduled.")
+        st.metric(
+            label="Avg. Time StS to Appt. Sched.",
+            value=format_days_to_dhm(value),
+            help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
+        )
 
     st.divider()
     st.subheader(f"Time to First Action Effectiveness: {selected_site}")
@@ -62,7 +74,6 @@ with st.container(border=True):
         selected_site
     )
 
-    # *** THIS IS THE FIX: Check for the standardized 'Total Referrals' column ***
     if site_effectiveness_df.empty or 'Total Referrals' not in site_effectiveness_df.columns or site_effectiveness_df['Total Referrals'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze first action effectiveness.")
     else:
@@ -71,7 +82,6 @@ with st.container(border=True):
         display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         
-        # The rename step is no longer needed for 'Attempts'
         display_df.rename(columns={
             'Total_Appts': 'Total Appointments',
             'Total_ICF': 'Total ICFs',
@@ -93,7 +103,7 @@ with st.container(border=True):
 
     st.divider()
 
-    st.subheader(f"Contact Attempt Effectiveness (StS to Appt.): {selected_site}")
+    st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
     
     site_contact_df = calculate_site_contact_effectiveness(
         st.session_state.referral_data_processed,
