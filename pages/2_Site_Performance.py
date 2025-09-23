@@ -2,8 +2,8 @@
 import streamlit as st
 import pandas as pd
 from scoring import score_sites
-from helpers import format_performance_df, format_days_to_dhm # Added format_days_to_dhm
-from calculations import calculate_site_operational_kpis # New import
+from helpers import format_performance_df, format_days_to_dhm
+from calculations import calculate_site_operational_kpis, calculate_site_ttfc_effectiveness
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -16,14 +16,12 @@ if not st.session_state.get('data_processed_successfully', False):
     st.warning("Please upload and process your data on the 'Home & Data Setup' page first.")
     st.stop()
 
-# --- Site Operational KPIs Section ---
+# --- Site Operational KPIs & Effectiveness Section ---
 with st.container(border=True):
-    st.subheader("Site Operational KPIs")
-    st.markdown("Analyze site-level contact and scheduling efficiency. Select a specific site or view the overall average.")
+    st.subheader("Site Operational Analysis")
+    st.markdown("Analyze site-level efficiency. Select a specific site or view the overall average for all metrics in this section.")
 
-    # Create the dropdown options
     site_list = st.session_state.site_metrics_calculated['Site'].unique().tolist()
-    # Exclude 'Unassigned Site' from the selectable list
     site_list = [site for site in site_list if site != "Unassigned Site"]
     options = ["Overall"] + sorted(site_list)
     
@@ -33,7 +31,6 @@ with st.container(border=True):
         key="site_kpi_selector"
     )
 
-    # Call the new calculation function with the selected site
     site_kpis = calculate_site_operational_kpis(
         st.session_state.referral_data_processed,
         st.session_state.ts_col_map,
@@ -41,7 +38,6 @@ with st.container(border=True):
         selected_site
     )
 
-    # Display the results in columns
     kpi_cols = st.columns(3)
     with kpi_cols[0]:
         value = site_kpis.get('avg_sts_to_first_action')
@@ -63,6 +59,43 @@ with st.container(border=True):
             label="Avg. Time StS to Appt. Sched.",
             value=format_days_to_dhm(value),
             help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
+        )
+
+    st.divider()
+    st.subheader(f"Time to First Action Effectiveness: {selected_site}")
+    
+    site_effectiveness_df = calculate_site_ttfc_effectiveness(
+        st.session_state.referral_data_processed,
+        st.session_state.ts_col_map,
+        selected_site
+    )
+
+    if site_effectiveness_df.empty or site_effectiveness_df['Attempts'].sum() == 0:
+        st.info(f"Not enough data for '{selected_site}' to analyze first action effectiveness.")
+    else:
+        display_df = site_effectiveness_df.copy()
+        display_df['Appt. Rate'] = display_df['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        
+        display_df.rename(columns={
+            'Attempts': 'Total Referrals',
+            'Total_Appts': 'Total Appointments',
+            'Total_ICF': 'Total ICFs',
+            'Total_Enrolled': 'Total Enrollments'
+        }, inplace=True)
+        
+        final_cols = [
+            'Time to First Site Action', 'Total Referrals',
+            'Total Appointments', 'Appt. Rate',
+            'Total ICFs', 'ICF Rate',
+            'Total Enrollments', 'Enrollment Rate'
+        ]
+        
+        st.dataframe(
+            display_df[final_cols],
+            hide_index=True,
+            use_container_width=True
         )
 
 st.divider()
@@ -97,15 +130,12 @@ site_metrics = st.session_state.site_metrics_calculated
 if site_metrics is not None and not site_metrics.empty and weights_normalized:
     ranked_sites_df = score_sites(site_metrics, weights_normalized)
 
-    # --- THIS IS THE CORRECTED KPI CALCULATION BLOCK ---
     st.subheader("Key Performance Indicators (Overall)")
     
-    # Calculate totals directly from the source numeric data
     total_qualified = site_metrics['Total Qualified'].sum() if 'Total Qualified' in site_metrics.columns else 0
     total_enrollments = site_metrics['Enrollment Count'].sum() if 'Enrollment Count' in site_metrics.columns else 0
     total_icfs = site_metrics['Signed ICF Count'].sum() if 'Signed ICF Count' in site_metrics.columns else 0
     
-    # Calculate the overall rate using the summed totals
     overall_qual_to_icf_rate = (total_icfs / total_qualified) * 100 if total_qualified > 0 else 0
 
     kpi_cols = st.columns(3)
@@ -115,7 +145,6 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
         st.metric(label="Total Enrollments", value=f"{total_enrollments:,}")
     with kpi_cols[2], st.container(border=True):
         st.metric(label="Overall Qualified to ICF Rate", value=f"{overall_qual_to_icf_rate:.1f}%")
-    # --- END OF CORRECTED BLOCK ---
             
     st.divider()
 
