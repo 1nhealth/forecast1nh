@@ -322,3 +322,69 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     result.rename(columns={'ttfc_bin': 'Time to First Site Action'}, inplace=True)
     
     return result
+
+def calculate_site_contact_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall"):
+    """
+    Analyzes how the number of site contact attempts (StS to Appt) impacts downstream conversions.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # Filter for the selected site or use the whole dataset for 'Overall'
+    if selected_site != "Overall":
+        if 'Site' not in df.columns: return pd.DataFrame()
+        site_df = df[df['Site'] == selected_site].copy()
+    else:
+        site_df = df.copy()
+
+    sts_ts_col = ts_col_map.get("Sent To Site")
+    appt_ts_col = ts_col_map.get("Appointment Scheduled")
+    
+    # We only care about referrals that have been sent to a site
+    site_df = site_df.dropna(subset=[sts_ts_col]).copy()
+
+    if site_df.empty:
+        return pd.DataFrame()
+        
+    def count_intermediate_attempts(row):
+        sts_time = row[sts_ts_col]
+        appt_time = row[appt_ts_col]
+        history = row.get(status_history_col, [])
+
+        if not isinstance(history, list):
+            return 0
+            
+        # Define the window: start is StS, end is Appt Sched. If no Appt, window is open-ended.
+        start_window = sts_time
+        end_window = appt_time if pd.notna(appt_time) else pd.Timestamp.max
+
+        # Count status events that fall strictly between StS and Appt Sched
+        intermediate_statuses = [
+            event for event in history 
+            if event[1] > start_window and event[1] < end_window
+        ]
+        return len(intermediate_statuses)
+
+    site_df['site_attempt_count'] = site_df.apply(count_intermediate_attempts, axis=1)
+
+    # Define downstream outcomes
+    icf_col = ts_col_map.get("Signed ICF")
+    enr_col = ts_col_map.get("Enrolled")
+
+    # Aggregate results by the number of attempts
+    result = site_df.groupby('site_attempt_count').agg(
+        Total_Referrals=('site_attempt_count', 'size'),
+        Total_Appts=(appt_ts_col, lambda x: x.notna().sum()),
+        Total_ICF=(icf_col, lambda x: x.notna().sum()),
+        Total_Enrolled=(enr_col, lambda x: x.notna().sum())
+    )
+
+    # Calculate rates safely
+    result['Appt_Rate'] = (result['Total_Appts'] / result['Total_Referrals'].replace(0, np.nan))
+    result['ICF_Rate'] = (result['Total_ICF'] / result['Total_Referrals'].replace(0, np.nan))
+    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Total_Referrals'].replace(0, np.nan))
+    
+    result.reset_index(inplace=True)
+    result.rename(columns={'site_attempt_count': 'Number of Site Attempts (Pre-Appt.)'}, inplace=True)
+    
+    return result
