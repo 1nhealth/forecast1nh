@@ -198,3 +198,75 @@ def calculate_site_metrics(_processed_df, ordered_stages, ts_col_map):
         grouping_col="Site",
         unclassified_label="Unassigned Site"
     )
+
+def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected_site="Overall"):
+    """
+    Calculates operational KPIs for sites based on activity after the 'Sent To Site' stage.
+    """
+    if df is None or df.empty:
+        return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
+
+    # Filter the DataFrame based on the user's selection
+    if selected_site != "Overall":
+        # Ensure the 'Site' column exists before filtering
+        if 'Site' not in df.columns:
+            return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
+        site_df = df[df['Site'] == selected_site].copy()
+    else:
+        site_df = df.copy()
+
+    if site_df.empty:
+        return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
+
+    sts_ts_col = ts_col_map.get("Sent To Site")
+    appt_ts_col = ts_col_map.get("Appointment Scheduled")
+
+    # --- KPI 1: Average Time from StS to First *Site* Action ---
+    all_ts_cols_after_sts = [v for k, v in ts_col_map.items() if k != "Sent To Site" and v in site_df.columns]
+    
+    def find_first_action_after_sts(row):
+        sts_time = row[sts_ts_col]
+        if pd.isna(sts_time):
+            return pd.NaT
+        # Find the earliest timestamp from all other columns that is AFTER the StS time
+        future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
+        return future_events.min() if not future_events.empty else pd.NaT
+
+    first_actions = site_df.apply(find_first_action_after_sts, axis=1)
+    time_to_first_action = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / (60*60*24)
+    avg_sts_to_first_action = time_to_first_action.mean()
+
+    # --- KPI 2: Average Time Between *Site* Contact Attempts (StS -> Appt) ---
+    all_contact_deltas = []
+    if status_history_col in site_df.columns:
+        for _, row in site_df.iterrows():
+            sts_time = row[sts_ts_col]
+            appt_time = row[appt_ts_col]
+            history = row[status_history_col]
+
+            if pd.isna(sts_time) or not isinstance(history, list):
+                continue
+
+            # Define the time window for site contact attempts
+            start_window = sts_time
+            # If no appointment, the window is open-ended
+            end_window = appt_time if pd.notna(appt_time) else pd.Timestamp.max
+
+            site_attempt_timestamps = sorted([
+                event_dt for event_name, event_dt in history 
+                if "contact attempt" in event_name.lower() and event_dt > start_window and event_dt < end_window
+            ])
+            
+            if len(site_attempt_timestamps) > 1:
+                all_contact_deltas.extend(np.diff(site_attempt_timestamps))
+
+    avg_between_site_contacts = pd.Series(all_contact_deltas).mean().total_seconds() / (60 * 60 * 24) if all_contact_deltas else np.nan
+
+    # --- KPI 3: Average Time from StS to Appointment Scheduled ---
+    avg_sts_to_appt = calculate_avg_lag_generic(site_df, sts_ts_col, appt_ts_col)
+
+    return {
+        'avg_sts_to_first_action': avg_sts_to_first_action,
+        'avg_time_between_site_contacts': avg_between_site_contacts,
+        'avg_sts_to_appt': avg_sts_to_appt
+    }
