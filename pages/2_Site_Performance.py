@@ -2,7 +2,8 @@
 import streamlit as st
 import pandas as pd
 from scoring import score_sites
-from helpers import format_performance_df
+from helpers import format_performance_df, format_days_to_dhm # Added format_days_to_dhm
+from calculations import calculate_site_operational_kpis # New import
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -14,6 +15,57 @@ st.title("🏆 Site Performance Dashboard")
 if not st.session_state.get('data_processed_successfully', False):
     st.warning("Please upload and process your data on the 'Home & Data Setup' page first.")
     st.stop()
+
+# --- Site Operational KPIs Section ---
+with st.container(border=True):
+    st.subheader("Site Operational KPIs")
+    st.markdown("Analyze site-level contact and scheduling efficiency. Select a specific site or view the overall average.")
+
+    # Create the dropdown options
+    site_list = st.session_state.site_metrics_calculated['Site'].unique().tolist()
+    # Exclude 'Unassigned Site' from the selectable list
+    site_list = [site for site in site_list if site != "Unassigned Site"]
+    options = ["Overall"] + sorted(site_list)
+    
+    selected_site = st.selectbox(
+        "Select a Site to Analyze (or Overall)", 
+        options=options,
+        key="site_kpi_selector"
+    )
+
+    # Call the new calculation function with the selected site
+    site_kpis = calculate_site_operational_kpis(
+        st.session_state.referral_data_processed,
+        st.session_state.ts_col_map,
+        "Parsed_Lead_Status_History",
+        selected_site
+    )
+
+    # Display the results in columns
+    kpi_cols = st.columns(3)
+    with kpi_cols[0]:
+        value = site_kpis.get('avg_sts_to_first_action')
+        st.metric(
+            label="Avg. Time to First Site Action",
+            value=format_days_to_dhm(value),
+            help="Time from when a lead is 'Sent To Site' until the site takes any follow-up action (e.g., status change, appointment scheduled)."
+        )
+    with kpi_cols[1]:
+        value = site_kpis.get('avg_time_between_site_contacts')
+        st.metric(
+            label="Avg. Time Between Site Contacts",
+            value=format_days_to_dhm(value),
+            help="The average time between explicit 'Contact Attempts' made by a site before an appointment is scheduled."
+        )
+    with kpi_cols[2]:
+        value = site_kpis.get('avg_sts_to_appt')
+        st.metric(
+            label="Avg. Time StS to Appt. Sched.",
+            value=format_days_to_dhm(value),
+            help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
+        )
+
+st.divider()
 
 # --- Synced Assumption Controls ---
 with st.expander("Adjust Performance Scoring Weights"):
