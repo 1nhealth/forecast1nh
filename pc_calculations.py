@@ -156,7 +156,7 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     result.rename(columns={'pre_sts_attempt_count': 'Number of Attempts', 'Referral_Count': 'Total Referrals'}, inplace=True)
     return result
 
-# --- THIS IS THE FINAL, CORRECTED FUNCTION ---
+# --- THIS IS THE FINAL, UPDATED FUNCTION ---
 def calculate_performance_over_time(df, ts_col_map):
     """
     Calculates key PC performance metrics over time on a weekly basis,
@@ -172,19 +172,14 @@ def calculate_performance_over_time(df, ts_col_map):
     if not all(col in df.columns for col in [pof_ts_col, psa_ts_col, sts_ts_col]):
         return pd.DataFrame()
 
-    # 1. Calculate the overall average transit time for maturity
     avg_pof_to_sts_lag = calculate_avg_lag_generic(df, pof_ts_col, sts_ts_col)
-    # 2. Define maturity period (use 1.5x lag, with a 30-day fallback)
     maturity_days = (avg_pof_to_sts_lag * 1.5) if pd.notna(avg_pof_to_sts_lag) else 30
 
     time_df = df.set_index('Submitted On_DT')
 
-    # 3. Apply maturity logic inside the weekly aggregation
     weekly_summary = time_df.resample('W').apply(lambda week_df: pd.Series({
         'Sent to Site % (Transit-Time Adjusted)': (
-            # Filter for mature referrals within the week
             week_df[week_df.index + pd.Timedelta(days=maturity_days) < pd.Timestamp.now()]
-            # Numerator: Count StS from the mature cohort
             .pipe(lambda mature_df: mature_df[sts_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0)
         ),
         'Average Time to First Contact (Days)': calculate_avg_lag_generic(
@@ -192,6 +187,10 @@ def calculate_performance_over_time(df, ts_col_map):
         ),
         'Average Sent to Site per Day': (
             week_df[sts_ts_col].notna().sum() / 7
+        ),
+        # THIS IS THE NEW METRIC
+        'Total Sent to Site per Week': (
+            week_df[sts_ts_col].notna().sum()
         )
     }))
 
