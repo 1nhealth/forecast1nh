@@ -4,12 +4,13 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 
-# Import all calculation functions and the new formatting helper
+# Import all calculation functions and the formatting helper
 from pc_calculations import (
     calculate_heatmap_data, 
     calculate_average_time_metrics, 
     calculate_top_status_flows,
-    calculate_ttfc_effectiveness
+    calculate_ttfc_effectiveness,
+    calculate_contact_attempt_effectiveness # New function included
 )
 from helpers import format_days_to_dhm
 
@@ -45,6 +46,8 @@ with st.spinner("Analyzing status histories for PC activity..."):
     time_metrics = calculate_average_time_metrics(processed_data, ts_col_map, parsed_status_history_col)
     top_flows = calculate_top_status_flows(processed_data, ts_col_map, parsed_status_history_col)
     ttfc_df = calculate_ttfc_effectiveness(processed_data, ts_col_map)
+    # Call the new calculation function for the final table
+    attempt_effectiveness_df = calculate_contact_attempt_effectiveness(processed_data, ts_col_map, parsed_status_history_col)
 
 # --- Display Heatmaps ---
 st.header("Activity Heatmaps")
@@ -118,27 +121,53 @@ st.markdown("Analyzes how the speed of the first contact impacts downstream funn
 if ttfc_df.empty or ttfc_df['Attempts'].sum() == 0:
     st.info("Not enough data to analyze the effectiveness of first contact timing.")
 else:
-    # Format the dataframe for display
     display_df = ttfc_df.copy()
     display_df['StS Rate'] = display_df['StS_Rate'].map('{:.1%}'.format).replace('nan%', '-')
     display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
     display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
-
-    # Rename columns for presentation
     display_df.rename(columns={
         'Total_StS': 'Total Sent to Site',
         'Total_ICF': 'Total ICFs',
         'Total_Enrolled': 'Total Enrollments'
     }, inplace=True)
-    
-    # Select and order columns for the final view
     final_cols = [
         'Time to First Contact', 'Attempts',
         'Total Sent to Site', 'StS Rate',
         'Total ICFs', 'ICF Rate',
         'Total Enrollments', 'Enrollment Rate'
     ]
-    
+    with st.container(border=True):
+        st.dataframe(
+            display_df[final_cols],
+            hide_index=True,
+            use_container_width=True
+        )
+
+st.divider()
+
+# --- Contact Attempt Effectiveness ---
+st.header("Contact Attempt Effectiveness")
+st.markdown("Analyzes how the number of pre-site status changes impacts downstream funnel conversions.")
+
+if attempt_effectiveness_df.empty or attempt_effectiveness_df['Total Referrals'].sum() == 0:
+    st.info("Not enough data to analyze the effectiveness of contact attempts.")
+else:
+    display_df = attempt_effectiveness_df.copy()
+    display_df['StS Rate'] = display_df['StS_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+    display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+    display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+    display_df.rename(columns={
+        'Total_Referrals': 'Total Referrals',
+        'Total_StS': 'Total Sent to Site',
+        'Total_ICF': 'Total ICFs',
+        'Total_Enrolled': 'Total Enrollments'
+    }, inplace=True)
+    final_cols = [
+        'Number of Attempts', 'Total Referrals',
+        'Total Sent to Site', 'StS Rate',
+        'Total ICFs', 'ICF Rate',
+        'Total Enrollments', 'Enrollment Rate'
+    ]
     with st.container(border=True):
         st.dataframe(
             display_df[final_cols],
