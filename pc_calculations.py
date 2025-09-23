@@ -184,3 +184,46 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     }, inplace=True)
     
     return result
+
+def calculate_performance_over_time(df, ts_col_map):
+    """
+    Calculates key PC performance metrics over time on a weekly basis.
+    """
+    if df is None or df.empty or 'Submitted On_DT' not in df.columns:
+        return pd.DataFrame()
+
+    # Define the timestamp columns we need for the calculations
+    pof_ts_col = ts_col_map.get("Passed Online Form")
+    psa_ts_col = ts_col_map.get("Pre-Screening Activities")
+    sts_ts_col = ts_col_map.get("Sent To Site")
+
+    # Ensure the necessary columns exist
+    if not all(col in df.columns for col in [pof_ts_col, psa_ts_col, sts_ts_col]):
+        return pd.DataFrame()
+
+    # Set the submission date as the index for time-based resampling
+    time_df = df.set_index('Submitted On_DT')
+
+    # Resample the data by week and apply custom aggregation functions
+    weekly_summary = time_df.resample('W').apply(lambda week_df: pd.Series({
+        # Metric 1: Sent to Site %
+        'Sent to Site %': (
+            week_df[sts_ts_col].notna().sum() / len(week_df) if len(week_df) > 0 else 0
+        ),
+        # Metric 2: Average Time to First Contact
+        'Average Time to First Contact (Days)': calculate_avg_lag_generic(
+            week_df, pof_ts_col, psa_ts_col
+        ),
+        # Metric 3: Average Sent to Site per Day
+        'Average Sent to Site per Day': (
+            week_df[sts_ts_col].notna().sum() / 7
+        )
+    }))
+
+    # Clean up the resulting DataFrame
+    # Convert percentage to a more readable format
+    weekly_summary['Sent to Site %'] *= 100
+    # Forward-fill any gaps for a smoother chart visualization
+    weekly_summary.fillna(method='ffill', inplace=True)
+
+    return weekly_summary
