@@ -101,15 +101,11 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
         df[grouping_col] = unclassified_label
     df[grouping_col] = df[grouping_col].astype(str).str.strip().replace('', unclassified_label).fillna(unclassified_label)
     
-    # --- THIS IS THE CORRECTED LOGIC BLOCK ---
-    
-    # Define all possible stages that might have counts
     all_possible_stages = [
         STAGE_PASSED_ONLINE_FORM, STAGE_PRE_SCREENING_ACTIVITIES, STAGE_SENT_TO_SITE,
         STAGE_APPOINTMENT_SCHEDULED, STAGE_SIGNED_ICF, STAGE_SCREEN_FAILED, STAGE_ENROLLED
     ]
     
-    # Ensure all possible timestamp columns exist, even if they are all null
     for stage in all_possible_stages:
         ts_col = ts_col_map.get(stage)
         if ts_col and ts_col not in df.columns:
@@ -119,7 +115,6 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
     for group_name, group_df in df.groupby(grouping_col):
         metrics = {grouping_col: group_name}
         
-        # Calculate counts for each stage safely
         counts = {}
         for stage in all_possible_stages:
             ts_col = ts_col_map.get(stage)
@@ -128,7 +123,6 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
             else:
                 counts[stage] = 0
 
-        # Assign counts to metrics dictionary with user-friendly names
         pof_count = counts.get(STAGE_PASSED_ONLINE_FORM, 0)
         psa_count = counts.get(STAGE_PRE_SCREENING_ACTIVITIES, 0)
         sts_count = counts.get(STAGE_SENT_TO_SITE, 0)
@@ -142,10 +136,9 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
         metrics['Sent To Site Count'] = sts_count
         metrics['Appointment Scheduled Count'] = appt_count
         metrics['Signed ICF Count'] = icf_count
-        metrics['Screen Failed Count'] = sf_count # Added for completeness
-        metrics['Enrollment Count'] = enrolled_count # This now correctly adds the column
+        metrics['Screen Failed Count'] = sf_count
+        metrics['Enrollment Count'] = enrolled_count
 
-        # Calculate Conversion Rates
         metrics['POF -> PSA %'] = (psa_count / pof_count) if pof_count > 0 else 0.0
         metrics['PSA -> StS %'] = (sts_count / psa_count) if psa_count > 0 else 0.0
         metrics['StS -> Appt %'] = (appt_count / sts_count) if sts_count > 0 else 0.0
@@ -154,7 +147,6 @@ def calculate_grouped_performance_metrics(_processed_df, ordered_stages, ts_col_
         metrics['Qual -> ICF %'] = (icf_count / pof_count) if pof_count > 0 else 0.0
         metrics['Qual to Enrollment %'] = (enrolled_count / pof_count) if pof_count > 0 else 0.0
         
-        # Screen Fail and Lag Metrics
         screen_fail_metric = 'Screen Fail % (from ICF)'
         projection_lag_metric = 'Projection Lag (Days)'
         if grouping_col == 'Site':
@@ -206,9 +198,7 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
     if df is None or df.empty:
         return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
 
-    # Filter the DataFrame based on the user's selection
     if selected_site != "Overall":
-        # Ensure the 'Site' column exists before filtering
         if 'Site' not in df.columns:
             return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
         site_df = df[df['Site'] == selected_site].copy()
@@ -221,14 +211,12 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
     sts_ts_col = ts_col_map.get("Sent To Site")
     appt_ts_col = ts_col_map.get("Appointment Scheduled")
 
-    # --- KPI 1: Average Time from StS to First *Site* Action ---
     all_ts_cols_after_sts = [v for k, v in ts_col_map.items() if k != "Sent To Site" and v in site_df.columns]
     
     def find_first_action_after_sts(row):
         sts_time = row[sts_ts_col]
         if pd.isna(sts_time):
             return pd.NaT
-        # Find the earliest timestamp from all other columns that is AFTER the StS time
         future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
         return future_events.min() if not future_events.empty else pd.NaT
 
@@ -236,7 +224,6 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
     time_to_first_action = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / (60*60*24)
     avg_sts_to_first_action = time_to_first_action.mean()
 
-    # --- KPI 2: Average Time Between *Site* Contact Attempts (StS -> Appt) ---
     all_contact_deltas = []
     if status_history_col in site_df.columns:
         for _, row in site_df.iterrows():
@@ -247,9 +234,7 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
             if pd.isna(sts_time) or not isinstance(history, list):
                 continue
 
-            # Define the time window for site contact attempts
             start_window = sts_time
-            # If no appointment, the window is open-ended
             end_window = appt_time if pd.notna(appt_time) else pd.Timestamp.max
 
             site_attempt_timestamps = sorted([
@@ -261,8 +246,6 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
                 all_contact_deltas.extend(np.diff(site_attempt_timestamps))
 
     avg_between_site_contacts = pd.Series(all_contact_deltas).mean().total_seconds() / (60 * 60 * 24) if all_contact_deltas else np.nan
-
-    # --- KPI 3: Average Time from StS to Appointment Scheduled ---
     avg_sts_to_appt = calculate_avg_lag_generic(site_df, sts_ts_col, appt_ts_col)
 
     return {
@@ -270,3 +253,72 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         'avg_time_between_site_contacts': avg_between_site_contacts,
         'avg_sts_to_appt': avg_sts_to_appt
     }
+
+def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
+    """
+    Analyzes how a site's time to first action impacts downstream conversion rates.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    if selected_site != "Overall":
+        if 'Site' not in df.columns: return pd.DataFrame()
+        site_df = df[df['Site'] == selected_site].copy()
+    else:
+        site_df = df.copy()
+
+    sts_ts_col = ts_col_map.get("Sent To Site")
+    site_df = site_df.dropna(subset=[sts_ts_col]).copy()
+
+    if site_df.empty:
+        return pd.DataFrame()
+
+    all_ts_cols_after_sts = [
+        v for k, v in ts_col_map.items() 
+        if k not in ["Passed Online Form", "Pre-Screening Activities", "Sent To Site"] and v in site_df.columns
+    ]
+    
+    def find_first_action_after_sts(row):
+        sts_time = row[sts_ts_col]
+        future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
+        return future_events.min() if not future_events.empty else pd.NaT
+
+    first_actions = site_df.apply(find_first_action_after_sts, axis=1)
+    
+    site_df['ttfc_hours'] = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / 3600
+
+    bin_edges = [-np.inf, 4, 8, 24, 48, 72, 120, 168, 336, np.inf]
+    bin_labels = [
+        '< 4 Hours', '4 - 8 Hours', '8 - 24 Hours', '1 - 2 Days', '2 - 3 Days',
+        '3 - 5 Days', '5 - 7 Days', '7 - 14 Days', '> 14 Days'
+    ]
+    
+    site_df['ttfc_bin'] = pd.cut(
+        site_df['ttfc_hours'], 
+        bins=bin_edges, 
+        labels=bin_labels, 
+        right=True
+    )
+
+    appt_col = ts_col_map.get("Appointment Scheduled")
+    icf_col = ts_col_map.get("Signed ICF")
+    enr_col = ts_col_map.get("Enrolled")
+
+    result = site_df.groupby('ttfc_bin').agg(
+        # Renaming here for clarity to match the final output
+        Attempts=('ttfc_bin', 'size'),
+        Total_Appts=(appt_col, lambda x: x.notna().sum()),
+        Total_ICF=(icf_col, lambda x: x.notna().sum()),
+        Total_Enrolled=(enr_col, lambda x: x.notna().sum())
+    )
+    
+    result = result.reindex(bin_labels, fill_value=0)
+
+    result['Appt_Rate'] = (result['Total_Appts'] / result['Attempts'].replace(0, np.nan))
+    result['ICF_Rate'] = (result['Total_ICF'] / result['Attempts'].replace(0, np.nan))
+    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Attempts'].replace(0, np.nan))
+    
+    result.reset_index(inplace=True)
+    result.rename(columns={'ttfc_bin': 'Time to First Site Action'}, inplace=True)
+    
+    return result
