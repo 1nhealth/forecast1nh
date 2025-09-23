@@ -14,10 +14,8 @@ def calculate_heatmap_data(df, ts_col_map, status_history_col):
     """
     if df is None or df.empty or ts_col_map is None:
         return pd.DataFrame(), pd.DataFrame()
-
     contact_timestamps = []
     sts_ts_col = ts_col_map.get("Sent To Site")
-
     if status_history_col in df.columns and sts_ts_col in df.columns:
         for _, row in df.iterrows():
             sts_timestamp = row[sts_ts_col]
@@ -27,9 +25,7 @@ def calculate_heatmap_data(df, ts_col_map, status_history_col):
                 is_contact_attempt = "contact attempt" in event_name.lower()
                 if is_contact_attempt and (pd.isna(sts_timestamp) or event_dt < sts_timestamp):
                     contact_timestamps.append(event_dt)
-    
     sts_timestamps = df[sts_ts_col].dropna().tolist()
-
     def aggregate_timestamps(timestamps):
         if not timestamps:
             return pd.DataFrame(np.zeros((7, 24)), 
@@ -42,7 +38,6 @@ def calculate_heatmap_data(df, ts_col_map, status_history_col):
         day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         heatmap_grid.index = heatmap_grid.index.map(lambda i: day_names[i])
         return heatmap_grid
-
     return aggregate_timestamps(contact_timestamps), aggregate_timestamps(sts_timestamps)
 
 def calculate_average_time_metrics(df, ts_col_map, status_history_col):
@@ -51,14 +46,11 @@ def calculate_average_time_metrics(df, ts_col_map, status_history_col):
     """
     if df is None or df.empty or ts_col_map is None:
         return {"avg_time_to_first_contact": np.nan, "avg_time_between_contacts": np.nan, "avg_time_new_to_sts": np.nan}
-
     pof_ts_col = ts_col_map.get("Passed Online Form")
     psa_ts_col = ts_col_map.get("Pre-Screening Activities")
     sts_ts_col = ts_col_map.get("Sent To Site")
-
     avg_ttfc = calculate_avg_lag_generic(df, pof_ts_col, psa_ts_col)
     avg_new_to_sts = calculate_avg_lag_generic(df, pof_ts_col, sts_ts_col)
-    
     all_contact_deltas = []
     if status_history_col in df.columns and sts_ts_col in df.columns:
         for _, row in df.iterrows():
@@ -71,9 +63,7 @@ def calculate_average_time_metrics(df, ts_col_map, status_history_col):
             ])
             if len(attempt_timestamps) > 1:
                 all_contact_deltas.extend(np.diff(attempt_timestamps))
-
     avg_between_contacts = pd.Series(all_contact_deltas).mean().total_seconds() / (60 * 60 * 24) if all_contact_deltas else np.nan
-
     return {"avg_time_to_first_contact": avg_ttfc, "avg_time_between_contacts": avg_between_contacts, "avg_time_new_to_sts": avg_new_to_sts}
 
 def calculate_top_status_flows(df, ts_col_map, status_history_col, min_data_threshold=5):
@@ -105,7 +95,6 @@ def calculate_ttfc_effectiveness(df, ts_col_map):
     if pof_ts_col not in df.columns: return pd.DataFrame()
     other_ts_cols = [v for k, v in ts_col_map.items() if k != "Passed Online Form" and v in df.columns]
     if not other_ts_cols: return pd.DataFrame()
-
     analysis_df = df.copy()
     start_ts = analysis_df[pof_ts_col]
     def find_first_action(row):
@@ -113,15 +102,12 @@ def calculate_ttfc_effectiveness(df, ts_col_map):
         return future_events.min() if not future_events.empty else pd.NaT
     first_action_ts = analysis_df[other_ts_cols].apply(find_first_action, axis=1)
     analysis_df['ttfc_minutes'] = (first_action_ts - start_ts).dt.total_seconds() / 60
-    
     bin_edges = [-np.inf, 5, 15, 30, 60, 3*60, 6*60, 12*60, 24*60, np.inf]
     bin_labels = ['<= 5 min', '5-15 min', '15-30 min', '30-60 min', '1-3 hours', '3-6 hours', '6-12 hours', '12-24 hours', '> 24 hours']
     analysis_df['ttfc_bin'] = pd.cut(analysis_df['ttfc_minutes'], bins=bin_edges, labels=bin_labels, right=True)
-
     sts_col = ts_col_map.get("Sent To Site")
     icf_col = ts_col_map.get("Signed ICF")
     enr_col = ts_col_map.get("Enrolled")
-
     result = analysis_df.groupby('ttfc_bin').agg(
         Attempts=('ttfc_bin', 'size'),
         Total_StS=(sts_col, lambda x: x.notna().sum()),
@@ -136,35 +122,62 @@ def calculate_ttfc_effectiveness(df, ts_col_map):
     result.rename(columns={'ttfc_bin': 'Time to First Contact'}, inplace=True)
     return result
 
+# --- THIS IS THE CORRECTED FUNCTION ---
 def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     """
     Analyzes how the number of pre-StS status changes impacts downstream conversions.
     """
-    if df is None or df.empty or ts_col_map is None: return pd.DataFrame()
+    if df is None or df.empty or ts_col_map is None:
+        return pd.DataFrame()
+
     sts_ts_col = ts_col_map.get("Sent To Site")
-    if sts_ts_col not in df.columns or status_history_col not in df.columns: return pd.DataFrame()
+    if sts_ts_col not in df.columns or status_history_col not in df.columns:
+        return pd.DataFrame()
+
     analysis_df = df.copy()
 
+    # THIS INTERNAL FUNCTION CONTAINS THE FIX
     def count_pre_sts_statuses(row):
         sts_timestamp = row[sts_ts_col]
         history = row[status_history_col]
-        if not isinstance(history, list) or not history: return 0
-        pre_sts_history = [event for event in history if pd.isna(sts_timestamp) or event[1] < sts_timestamp]
+
+        if not isinstance(history, list) or not history:
+            return 0
+        
+        # *** THE FIX: Use <= to correctly include all statuses in the journey ***
+        # For referrals that HAVE been sent to site, count all statuses up to and including that point.
+        if pd.notna(sts_timestamp):
+            pre_sts_history = [event for event in history if event[1] <= sts_timestamp]
+        # For referrals that HAVE NOT been sent, count all statuses in their history.
+        else:
+            pre_sts_history = history
+        
+        # The number of attempts/steps is the number of statuses after 'New'.
         return max(0, len(pre_sts_history) - 1)
+
     analysis_df['pre_sts_attempt_count'] = analysis_df.apply(count_pre_sts_statuses, axis=1)
 
     icf_col = ts_col_map.get("Signed ICF")
     enr_col = ts_col_map.get("Enrolled")
 
+    # Aggregate results by the number of attempts
     result = analysis_df.groupby('pre_sts_attempt_count').agg(
-        Total_Referrals=('pre_sts_attempt_count', 'size'),
+        Referral_Count=('pre_sts_attempt_count', 'size'),
         Total_StS=(sts_ts_col, lambda x: x.notna().sum()),
         Total_ICF=(icf_col, lambda x: x.notna().sum()),
         Total_Enrolled=(enr_col, lambda x: x.notna().sum())
     )
-    result['StS_Rate'] = (result['Total_StS'] / result['Total_Referrals'].replace(0, np.nan))
-    result['ICF_Rate'] = (result['Total_ICF'] / result['Total_Referrals'].replace(0, np.nan))
-    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Total_Referrals'].replace(0, np.nan))
+
+    # Calculate rates safely
+    result['StS_Rate'] = (result['Total_StS'] / result['Referral_Count'].replace(0, np.nan))
+    result['ICF_Rate'] = (result['Total_ICF'] / result['Referral_Count'].replace(0, np.nan))
+    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Referral_Count'].replace(0, np.nan))
+    
     result.reset_index(inplace=True)
-    result.rename(columns={'pre_sts_attempt_count': 'Number of Attempts'}, inplace=True)
+    
+    result.rename(columns={
+        'pre_sts_attempt_count': 'Number of Attempts',
+        'Referral_Count': 'Total Referrals'
+    }, inplace=True)
+    
     return result
