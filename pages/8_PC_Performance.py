@@ -13,7 +13,8 @@ from pc_calculations import (
     calculate_top_status_flows,
     calculate_ttfc_effectiveness,
     calculate_contact_attempt_effectiveness,
-    calculate_performance_over_time
+    calculate_performance_over_time,
+    analyze_heatmap_efficiency # Import new function
 )
 from helpers import format_days_to_dhm
 
@@ -71,6 +72,8 @@ with st.spinner("Analyzing status histories for PC activity in selected date ran
     ttfc_df = calculate_ttfc_effectiveness(filtered_df, ts_col_map)
     attempt_effectiveness_df = calculate_contact_attempt_effectiveness(filtered_df, ts_col_map, parsed_status_history_col)
     over_time_df = calculate_performance_over_time(filtered_df, ts_col_map)
+    # --- NEW: Call the analysis function ---
+    heatmap_insights = analyze_heatmap_efficiency(contact_heatmap, sts_heatmap)
 
 st.header("Activity Heatmaps")
 st.markdown("Visualizing when key activities occur during the week.")
@@ -91,6 +94,41 @@ with col2, st.container(border=True):
         st.plotly_chart(fig2, use_container_width=True)
     else:
         st.info("No 'Sent To Site' data found in the selected date range.")
+
+# --- NEW SECTION: Display Heatmap Insights ---
+st.header("Strategic Contact Insights")
+st.markdown("Based on an analysis of contact attempts vs. successful 'Sent to Site' outcomes.")
+
+if not heatmap_insights:
+    st.info("Not enough data to generate strategic contact insights.")
+else:
+    insight_cols = st.columns(3)
+    with insight_cols[0], st.container(border=True, height=250):
+        st.subheader("📈 Best for Volume")
+        st.caption("Times with high contact volume that also result in high 'Sent to Site' volume.")
+        if heatmap_insights.get("volume_best"):
+            for item in heatmap_insights["volume_best"]:
+                st.markdown(f"- **{item}**")
+        else:
+            st.write("No distinct high-volume/high-success time slots found.")
+            
+    with insight_cols[1], st.container(border=True, height=250):
+        st.subheader("🎯 Most Efficient")
+        st.caption("Times with the best conversion of contacts to 'Sent to Site'.")
+        if heatmap_insights.get("most_efficient"):
+            for item in heatmap_insights["most_efficient"]:
+                st.markdown(f"- **{item}**")
+        else:
+            st.write("No distinct high-efficiency time slots found.")
+
+    with insight_cols[2], st.container(border=True, height=250):
+        st.subheader("⚠️ Least Efficient")
+        st.caption("Times with high contact volume but low 'Sent to Site' outcomes.")
+        if heatmap_insights.get("least_efficient"):
+            for item in heatmap_insights["least_efficient"]:
+                st.markdown(f"- **{item}**")
+        else:
+            st.write("No distinct low-efficiency time slots found.")
 
 st.divider()
 
@@ -174,10 +212,9 @@ else:
         
         fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-        # --- THIS IS THE MODIFIED LINE ---
         fig.add_trace(
             go.Scatter(x=over_time_df.index, y=over_time_df[primary_metric], name=primary_metric, 
-                       line=dict(color='#53CA97')), # Added color here
+                       line=dict(color='#53CA97')),
             secondary_y=False,
         )
 
