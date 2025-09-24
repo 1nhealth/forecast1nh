@@ -122,7 +122,6 @@ def calculate_ttfc_effectiveness(df, ts_col_map):
     result.rename(columns={'ttfc_bin': 'Time to First Contact'}, inplace=True)
     return result
 
-# --- THIS IS THE FINAL CORRECTED FUNCTION ---
 def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     """
     Analyzes how the number of pre-StS status changes impacts downstream conversions.
@@ -136,7 +135,6 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
 
     analysis_df = df.copy()
 
-    # THIS INTERNAL FUNCTION CONTAINS THE CORRECTED LOGIC
     def count_pre_sts_attempts(row):
         sts_timestamp = row[sts_ts_col]
         history = row[status_history_col]
@@ -144,17 +142,10 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
         if not isinstance(history, list) or not history:
             return 0
         
-        # This is the path of statuses taken *before* the referral was sent to site.
-        # This correctly handles referrals that have not been sent to site yet.
         pre_sts_path = [
             event for event in history 
             if pd.isna(sts_timestamp) or event[1] < sts_timestamp
         ]
-        
-        # The number of attempts is the number of intermediate statuses.
-        # A path of ['New'] means 0 attempts.
-        # A path of ['New', 'Contact Attempt 1'] means 1 attempt.
-        # This matches the logic: New -> Step 1 -> StS = 1 attempt.
         return max(0, len(pre_sts_path) - 1)
 
     analysis_df['pre_sts_attempt_count'] = analysis_df.apply(count_pre_sts_attempts, axis=1)
@@ -162,7 +153,6 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
     icf_col = ts_col_map.get("Signed ICF")
     enr_col = ts_col_map.get("Enrolled")
 
-    # Aggregate results by the number of attempts
     result = analysis_df.groupby('pre_sts_attempt_count').agg(
         Referral_Count=('pre_sts_attempt_count', 'size'),
         Total_StS=(sts_ts_col, lambda x: x.notna().sum()),
@@ -170,7 +160,6 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
         Total_Enrolled=(enr_col, lambda x: x.notna().sum())
     )
 
-    # Calculate rates safely
     result['StS_Rate'] = (result['Total_StS'] / result['Referral_Count'].replace(0, np.nan))
     result['ICF_Rate'] = (result['Total_ICF'] / result['Referral_Count'].replace(0, np.nan))
     result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Referral_Count'].replace(0, np.nan))
@@ -227,3 +216,70 @@ def calculate_performance_over_time(df, ts_col_map):
     weekly_summary.fillna(method='ffill', inplace=True)
 
     return weekly_summary
+
+# --- NEW FUNCTION ---
+def analyze_heatmap_efficiency(contact_heatmap, sts_heatmap):
+    """
+    Analyzes the two heatmaps to find the best and worst times for contact attempts.
+    """
+    if contact_heatmap.empty or sts_heatmap.empty or contact_heatmap.sum().sum() == 0:
+        return {}
+
+    # Reshape data for analysis
+    contacts_long = contact_heatmap.stack().reset_index()
+    contacts_long.columns = ['Day', 'Hour', 'Contacts']
+    sts_long = sts_heatmap.stack().reset_index()
+    sts_long.columns = ['Day', 'Hour', 'StS']
+    
+    # Merge the two data sources
+    merged_df = pd.merge(contacts_long, sts_long, on=['Day', 'Hour'])
+    
+    # Calculate efficiency (StS per Contact Attempt)
+    merged_df['Efficiency'] = (merged_df['StS'] / merged_df['Contacts']).replace([np.inf, -np.inf], 0).fillna(0)
+    
+    # Define thresholds using quantiles for robustness
+    high_contacts_threshold = merged_df['Contacts'].quantile(0.90)
+    high_sts_threshold = merged_df['StS'].quantile(0.90)
+    
+    # Ensure there's variance in efficiency before calculating quantile
+    if merged_df[merged_df['Contacts'] > 0]['Efficiency'].nunique() > 1:
+        high_efficiency_threshold = merged_df[merged_df['Contacts'] > 0]['Efficiency'].quantile(0.90)
+        low_efficiency_threshold = merged_df[merged_df['Contacts'] > high_contacts_threshold]['Efficiency'].quantile(0.25)
+    else:
+        high_efficiency_threshold = 0
+        low_efficiency_threshold = 0
+
+    # Filter for each category
+    volume_best_df = merged_df[
+        (merged_df['Contacts'] >= high_contacts_threshold) & 
+        (merged_df['StS'] >= high_sts_threshold) &
+        (merged_df['Contacts'] > 1) # Ensure some minimum activity
+    ]
+    
+    most_efficient_df = merged_df[
+        (merged_df['Efficiency'] >= high_efficiency_threshold) & 
+        (merged_df['StS'] >= 1) & # Must have at least one success
+        (merged_df['Efficiency'] > 0)
+    ].sort_values(by='Efficiency', ascending=False)
+    
+    least_efficient_df = merged_df[
+        (merged_df['Contacts'] >= high_contacts_threshold) & 
+        (merged_df['Efficiency'] <= low_efficiency_threshold) &
+        (merged_df['Efficiency'] < high_efficiency_threshold) # Must be less than the best
+    ].sort_values(by='Efficiency', ascending=True)
+
+    # Helper to format the output strings
+    def format_hour(hour):
+        if hour == 0: return "12 AM"
+        if hour == 12: return "12 PM"
+        if hour < 12: return f"{hour} AM"
+        return f"{hour-12} PM"
+
+    # Extract top N time slots for each category
+    results = {
+        "volume_best": [f"{row.Day}, {format_hour(row.Hour)}" for _, row in volume_best_df.head(5).iterrows()],
+        "most_efficient": [f"{row.Day}, {format_hour(row.Hour)}" for _, row in most_efficient_df.head(5).iterrows()],
+        "least_efficient": [f"{row.Day}, {format_hour(row.Hour)}" for _, row in least_efficient_df.head(5).iterrows()],
+    }
+    
+    return results
