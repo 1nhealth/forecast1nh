@@ -19,9 +19,9 @@ def score_performance_groups(_performance_metrics_df, weights, group_col_name):
     
     metrics_to_scale = list(weights.keys())
     
-    # --- THIS IS THE CORRECTED, MORE ROBUST KEYWORD LIST ---
-    lower_is_better_keywords = ['Lag', 'TTC', 'Fail', 'Lost', 'Time', 'Awaiting', 'time from']
-    lower_is_better = [m for m in metrics_to_scale if any(keyword in m for keyword in lower_is_better_keywords)]
+    # --- FIX: Make keyword matching for inversion case-insensitive and more comprehensive ---
+    lower_is_better_keywords = ['lag', 'ttc', 'fail', 'lost', 'time', 'awaiting']
+    lower_is_better = [m for m in metrics_to_scale if any(keyword in m.lower() for keyword in lower_is_better_keywords)]
     
     scaled_data = df_with_scores.reindex(columns=metrics_to_scale).copy()
 

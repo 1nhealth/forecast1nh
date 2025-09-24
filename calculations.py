@@ -6,9 +6,6 @@ import numpy as np
 from constants import * # Import all stage names
 
 def calculate_avg_lag_generic(df, col_from, col_to):
-    """
-    Safely calculates the average time lag in days between two datetime columns.
-    """
     if col_from is None or col_to is None or col_from not in df.columns or col_to not in df.columns:
         return np.nan
 
@@ -477,6 +474,7 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
     icf_ts_col = ts_col_map.get(STAGE_SIGNED_ICF)
     enr_ts_col = ts_col_map.get(STAGE_ENROLLED)
     lost_ts_col = ts_col_map.get(STAGE_LOST)
+    sf_ts_col = ts_col_map.get(STAGE_SCREEN_FAILED)
 
     all_ts_cols_after_sts = [ts_col_map.get(s) for s in ordered_stages if ts_col_map.get(s) and ts_col_map.get(s) not in [pof_ts_col, psa_ts_col, sts_ts_col]]
     all_ts_cols_after_sts = [c for c in all_ts_cols_after_sts if c in df.columns]
@@ -492,7 +490,14 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         icf_count = group_df[icf_ts_col].notna().sum()
         enr_count = group_df[enr_ts_col].notna().sum()
         lost_count = group_df[lost_ts_col].notna().sum()
-        lost_after_icf_count = len(group_df[(group_df[icf_ts_col].notna()) & (group_df[lost_ts_col] > group_df[icf_ts_col])])
+        
+        # --- FIX: New calculation logic for SF or Lost After ICF ---
+        sf_or_lost_after_icf_mask = (group_df[icf_ts_col].notna()) & (
+            ((group_df[sf_ts_col].notna()) & (group_df[sf_ts_col] > group_df[icf_ts_col])) |
+            ((group_df[lost_ts_col].notna()) & (group_df[lost_ts_col] > group_df[icf_ts_col]))
+        )
+        sf_or_lost_after_icf_count = len(group_df[sf_or_lost_after_icf_mask])
+        
         lost_after_sts_count = len(group_df[(group_df[sts_ts_col].notna()) & (group_df[lost_ts_col] > group_df[sts_ts_col])])
 
         metrics['Total Qualified'] = pof_count
@@ -501,7 +506,7 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         metrics['Appt Count'] = appt_count
         metrics['ICF Count'] = icf_count
         metrics['Enrollment Count'] = enr_count
-        metrics['Lost After ICF Count'] = lost_after_icf_count
+        metrics['SF or Lost After ICF Count'] = sf_or_lost_after_icf_count
         metrics['Lost After StS'] = lost_after_sts_count
         metrics['Total Lost Count'] = lost_count
 
@@ -526,7 +531,6 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
             
             ops_kpis = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name)
             metrics['Avg. Time Between Site Contacts'] = ops_kpis.get('avg_time_between_site_contacts')
-            # --- NEW METRIC ADDED ---
             metrics['Average time to first site action'] = ops_kpis.get('avg_sts_to_first_action')
             
             contact_attempts_df = calculate_site_contact_attempt_effectiveness(group_df, ts_col_map, status_history_col, site_name)
@@ -546,7 +550,7 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         metrics['StS to Lost %'] = lost_after_sts_count / sts_count if sts_count > 0 else 0.0
         
         metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
-        metrics['ICF to Lost %'] = lost_after_icf_count / icf_count if icf_count > 0 else 0.0
+        metrics['SF or Lost After ICF %'] = sf_or_lost_after_icf_count / icf_count if icf_count > 0 else 0.0
         
         metrics['Avg time from StS to Appt Sched.'] = calculate_avg_lag_generic(group_df, sts_ts_col, appt_ts_col)
         metrics['Avg time from StS to ICF'] = calculate_avg_lag_generic(group_df, sts_ts_col, icf_ts_col)
