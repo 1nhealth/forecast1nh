@@ -558,3 +558,43 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         metrics_list.append(metrics)
         
     return pd.DataFrame(metrics_list)
+
+# --- NEW: Function for Ad Performance Metrics ---
+@st.cache_data
+def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, grouping_col, unclassified_label):
+    if _processed_df is None or grouping_col not in _processed_df.columns:
+        return pd.DataFrame()
+        
+    df = _processed_df.copy()
+    df[grouping_col] = df[grouping_col].astype(str).str.strip().replace('', unclassified_label).fillna(unclassified_label)
+
+    pof_ts_col = ts_col_map.get(STAGE_PASSED_ONLINE_FORM)
+    icf_ts_col = ts_col_map.get(STAGE_SIGNED_ICF)
+    enr_ts_col = ts_col_map.get(STAGE_ENROLLED)
+    sf_ts_col = ts_col_map.get(STAGE_SCREEN_FAILED)
+
+    metrics_list = []
+    for group_name, group_df in df.groupby(grouping_col):
+        metrics = {grouping_col: group_name}
+        
+        pof_count = group_df[pof_ts_col].notna().sum()
+        icf_count = group_df[icf_ts_col].notna().sum()
+        enr_count = group_df[enr_ts_col].notna().sum()
+        sf_count = group_df[sf_ts_col].notna().sum()
+        
+        metrics['Total Qualified'] = pof_count
+        metrics['ICF Count'] = icf_count
+        metrics['Enrollment Count'] = enr_count
+        metrics['Screen Fail Count'] = sf_count
+        
+        metrics['Qualified to ICF %'] = icf_count / pof_count if pof_count > 0 else 0.0
+        metrics['Qualified to Enrollment %'] = enr_count / pof_count if pof_count > 0 else 0.0
+        metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
+        metrics['Screen Fail % (from Qualified)'] = sf_count / pof_count if pof_count > 0 else 0.0
+        
+        lag = calculate_avg_lag_generic(group_df, pof_ts_col, enr_ts_col)
+        metrics['Projection Lag (Days)'] = lag if pd.notna(lag) else calculate_avg_lag_generic(group_df, pof_ts_col, icf_ts_col)
+
+        metrics_list.append(metrics)
+        
+    return pd.DataFrame(metrics_list)
