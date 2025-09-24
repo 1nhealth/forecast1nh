@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from scoring import score_sites
 from helpers import format_performance_df, format_days_to_dhm
-from calculations import calculate_site_operational_kpis, calculate_site_ttfc_effectiveness
+from calculations import calculate_site_operational_kpis, calculate_site_ttfc_effectiveness, calculate_site_contact_attempt_effectiveness
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -94,6 +94,45 @@ with st.container(border=True):
         
         st.dataframe(
             display_df[final_cols],
+            hide_index=True,
+            use_container_width=True
+        )
+
+    # --- NEW SECTION ---
+    st.divider()
+    st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
+    st.markdown("Analyzes how the number of site contact attempts (post-'Sent to Site') impacts downstream funnel conversions.")
+
+    site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(
+        st.session_state.referral_data_processed,
+        st.session_state.ts_col_map,
+        "Parsed_Lead_Status_History",
+        selected_site
+    )
+
+    if site_contact_effectiveness_df.empty or site_contact_effectiveness_df['Total Referrals'].sum() == 0:
+        st.info(f"Not enough data for '{selected_site}' to analyze contact attempt effectiveness.")
+    else:
+        display_df_contact = site_contact_effectiveness_df.copy()
+        display_df_contact['Appt. Rate'] = display_df_contact['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        display_df_contact['ICF Rate'] = display_df_contact['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        display_df_contact['Enrollment Rate'] = display_df_contact['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
+        
+        display_df_contact.rename(columns={
+            'Total_Appts': 'Total Appointments',
+            'Total_ICF': 'Total ICFs',
+            'Total_Enrolled': 'Total Enrollments'
+        }, inplace=True)
+        
+        final_cols_contact = [
+            'Number of Site Attempts', 'Total Referrals',
+            'Total Appointments', 'Appt. Rate',
+            'Total ICFs', 'ICF Rate',
+            'Total Enrollments', 'Enrollment Rate'
+        ]
+        
+        st.dataframe(
+            display_df_contact[final_cols_contact],
             hide_index=True,
             use_container_width=True
         )
