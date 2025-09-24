@@ -461,7 +461,6 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
 @st.cache_data
 def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, status_history_col):
     if _processed_df is None or 'Site' not in _processed_df.columns:
-        st.warning("Cannot calculate site metrics: 'Site' column not found.")
         return pd.DataFrame()
         
     df = _processed_df.copy()
@@ -569,6 +568,8 @@ def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, gro
     df[grouping_col] = df[grouping_col].astype(str).str.strip().replace('', unclassified_label).fillna(unclassified_label)
 
     pof_ts_col = ts_col_map.get(STAGE_PASSED_ONLINE_FORM)
+    sts_ts_col = ts_col_map.get(STAGE_SENT_TO_SITE)
+    appt_ts_col = ts_col_map.get(STAGE_APPOINTMENT_SCHEDULED)
     icf_ts_col = ts_col_map.get(STAGE_SIGNED_ICF)
     enr_ts_col = ts_col_map.get(STAGE_ENROLLED)
     sf_ts_col = ts_col_map.get(STAGE_SCREEN_FAILED)
@@ -578,22 +579,41 @@ def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, gro
         metrics = {grouping_col: group_name}
         
         pof_count = group_df[pof_ts_col].notna().sum()
+        sts_count = group_df[sts_ts_col].notna().sum()
+        appt_count = group_df[appt_ts_col].notna().sum()
         icf_count = group_df[icf_ts_col].notna().sum()
         enr_count = group_df[enr_ts_col].notna().sum()
         sf_count = group_df[sf_ts_col].notna().sum()
         
         metrics['Total Qualified'] = pof_count
+        metrics['StS Count'] = sts_count
+        metrics['Appt Count'] = appt_count
         metrics['ICF Count'] = icf_count
         metrics['Enrollment Count'] = enr_count
         metrics['Screen Fail Count'] = sf_count
         
+        # --- Conversion Rates ---
+        metrics['Qualified to StS %'] = sts_count / pof_count if pof_count > 0 else 0.0
+        metrics['StS to Appt %'] = appt_count / sts_count if sts_count > 0 else 0.0
         metrics['Qualified to ICF %'] = icf_count / pof_count if pof_count > 0 else 0.0
         metrics['Qualified to Enrollment %'] = enr_count / pof_count if pof_count > 0 else 0.0
         metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
         metrics['Screen Fail % (from Qualified)'] = sf_count / pof_count if pof_count > 0 else 0.0
+
+        # --- Lag Times ---
+        # Note: 'site_operational_kpis' is site-specific, so we calculate the average lag directly for the ad group
+        all_ts_cols_after_sts = [ts_col_map.get(s) for s in ordered_stages if ts_col_map.get(s) and ts_col_map.get(s) != sts_ts_col]
+        all_ts_cols_after_sts = [c for c in all_ts_cols_after_sts if c in group_df.columns]
         
-        lag = calculate_avg_lag_generic(group_df, pof_ts_col, enr_ts_col)
-        metrics['Projection Lag (Days)'] = lag if pd.notna(lag) else calculate_avg_lag_generic(group_df, pof_ts_col, icf_ts_col)
+        def find_first_action_after_sts(row):
+            sts_time = row[sts_ts_col]
+            if pd.isna(sts_time): return pd.NaT
+            future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
+            return future_events.min() if not future_events.empty else pd.NaT
+            
+        first_actions = group_df.apply(find_first_action_after_sts, axis=1)
+        metrics['Average time to first site action'] = ((first_actions - group_df[sts_ts_col]).dt.total_seconds() / (60*60*24)).mean()
+        metrics['Avg time from StS to Appt Sched.'] = calculate_avg_lag_generic(group_df, sts_ts_col, appt_ts_col)
 
         metrics_list.append(metrics)
         
