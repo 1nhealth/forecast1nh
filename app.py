@@ -24,10 +24,15 @@ required_keys = [
     'data_processed_successfully', 'referral_data_processed', 'funnel_definition',
     'ordered_stages', 'ts_col_map', 'site_metrics_calculated', 'inter_stage_lags',
     'historical_spend_df', 'ad_spend_input_dict',
-    # --- NEW: Initialize weight keys here ---
+    # --- OLD Scoring Weights ---
     'w_qual_to_enroll', 'w_icf_to_enroll', 'w_qual_to_icf', 'w_avg_ttc',
     'w_site_sf', 'w_sts_appt', 'w_appt_icf', 'w_lag_q_icf',
-    'w_generic_sf', 'w_proj_lag'
+    'w_generic_sf', 'w_proj_lag',
+    # --- NEW SITE-SPECIFIC Scoring Weights ---
+    'w_site_awaiting_action', 'w_site_avg_time_between_contacts', 'w_site_contact_rate',
+    'w_site_sts_to_icf', 'w_site_sts_to_enr', 'w_site_sts_to_lost',
+    'w_site_icf_to_lost', 'w_site_lag_sts_appt', 'w_site_lag_sts_icf',
+    'w_site_lag_sts_enr', 'w_site_qual_to_sts', 'w_site_qual_to_appt',
 ]
 default_values = {
     'data_processed_successfully': False,
@@ -35,10 +40,15 @@ default_values = {
         {'Month (YYYY-MM)': (datetime.now() - pd.DateOffset(months=2)).strftime('%Y-%m'), 'Historical Spend': 45000.0},
         {'Month (YYYY-MM)': (datetime.now() - pd.DateOffset(months=1)).strftime('%Y-%m'), 'Historical Spend': 60000.0}
     ]),
-    # --- NEW: Default values for all weights ---
+    # --- OLD Default values ---
     'w_qual_to_enroll': 10, 'w_icf_to_enroll': 10, 'w_qual_to_icf': 20, 'w_avg_ttc': 10,
     'w_site_sf': 5, 'w_sts_appt': 15, 'w_appt_icf': 15, 'w_lag_q_icf': 5,
-    'w_generic_sf': 5, 'w_proj_lag': 0
+    'w_generic_sf': 5, 'w_proj_lag': 0,
+    # --- NEW SITE-SPECIFIC Default values ---
+    'w_site_awaiting_action': 5, 'w_site_avg_time_between_contacts': 10, 'w_site_contact_rate': 10,
+    'w_site_sts_to_icf': 15, 'w_site_sts_to_enr': 20, 'w_site_sts_to_lost': 5,
+    'w_site_icf_to_lost': 5, 'w_site_lag_sts_appt': 10, 'w_site_lag_sts_icf': 5,
+    'w_site_lag_sts_enr': 0, 'w_site_qual_to_sts': 0, 'w_site_qual_to_appt': 0,
 }
 for key in required_keys:
     if key not in st.session_state:

@@ -19,9 +19,7 @@ def calculate_avg_lag_generic(df, col_from, col_to):
     valid_df = df.dropna(subset=[col_from, col_to])
     if valid_df.empty: return np.nan
 
-    # --- THIS IS THE CORRECTED LINE ---
     diff = pd.to_datetime(valid_df[col_to]) - pd.to_datetime(valid_df[col_from])
-    
     diff_positive = diff[diff >= pd.Timedelta(days=0)]
 
     return diff_positive.mean().total_seconds() / (60 * 60 * 24) if not diff_positive.empty else np.nan
@@ -307,7 +305,6 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     enr_col = ts_col_map.get("Enrolled")
 
     result = site_df.groupby('ttfc_bin').agg(
-        # Renaming here for clarity to match the final output
         Attempts=('ttfc_bin', 'size'),
         Total_Appts=(appt_col, lambda x: x.notna().sum()),
         Total_ICF=(icf_col, lambda x: x.notna().sum()),
@@ -479,3 +476,91 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
             weekly_summary[projected_col_name] = np.nan
 
     return weekly_summary
+
+# --- NEW ENHANCED SITE METRICS FUNCTION ---
+@st.cache_data
+def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, status_history_col):
+    if _processed_df is None or 'Site' not in _processed_df.columns:
+        st.warning("Cannot calculate site metrics: 'Site' column not found.")
+        return pd.DataFrame()
+        
+    df = _processed_df.copy()
+    df['Site'] = df['Site'].astype(str).str.strip().replace('', 'Unassigned Site').fillna('Unassigned Site')
+
+    # Get all timestamp columns for convenience
+    pof_ts_col = ts_col_map.get(STAGE_PASSED_ONLINE_FORM)
+    psa_ts_col = ts_col_map.get(STAGE_PRE_SCREENING_ACTIVITIES)
+    sts_ts_col = ts_col_map.get(STAGE_SENT_TO_SITE)
+    appt_ts_col = ts_col_map.get(STAGE_APPOINTMENT_SCHEDULED)
+    icf_ts_col = ts_col_map.get(STAGE_SIGNED_ICF)
+    enr_ts_col = ts_col_map.get(STAGE_ENROLLED)
+    lost_ts_col = ts_col_map.get(STAGE_LOST)
+
+    all_ts_cols_after_sts = [ts_col_map.get(s) for s in ordered_stages if ts_col_map.get(s) and ts_col_map.get(s) != sts_ts_col]
+    all_ts_cols_after_sts = [c for c in all_ts_cols_after_sts if c in df.columns]
+
+    metrics_list = []
+    for site_name, group_df in df.groupby('Site'):
+        metrics = {'Site': site_name}
+        
+        # --- Volume Counts ---
+        pof_count = group_df[pof_ts_col].notna().sum() if pof_ts_col else 0
+        psa_count = group_df[psa_ts_col].notna().sum() if psa_ts_col else 0
+        sts_count = group_df[sts_ts_col].notna().sum() if sts_ts_col else 0
+        appt_count = group_df[appt_ts_col].notna().sum() if appt_ts_col else 0
+        icf_count = group_df[icf_ts_col].notna().sum() if icf_ts_col else 0
+        enr_count = group_df[enr_ts_col].notna().sum() if enr_ts_col else 0
+        lost_count = group_df[lost_ts_col].notna().sum() if lost_ts_col else 0
+        lost_after_icf_count = len(group_df[(group_df[icf_ts_col].notna()) & (group_df[lost_ts_col] > group_df[icf_ts_col])])
+        
+        metrics['Total Qualified'] = pof_count
+        metrics['Pre-Screening Activities Count'] = psa_count
+        metrics['StS Count'] = sts_count
+        metrics['Appt Count'] = appt_count
+        metrics['ICF Count'] = icf_count
+        metrics['Enrollment Count'] = enr_count
+        metrics['Lost After ICF Count'] = lost_after_icf_count
+        metrics['Total Lost Count'] = lost_count
+
+        # --- Operational Metrics ---
+        if sts_count > 0:
+            sts_df = group_df.dropna(subset=[sts_ts_col])
+            
+            # Awaiting First Site Action
+            sts_df['has_later_action'] = sts_df[all_ts_cols_after_sts].notna().any(axis=1)
+            awaiting_action_count = len(sts_df[~sts_df['has_later_action']])
+            metrics['Total Referrals Awaiting First Site Action'] = awaiting_action_count
+            
+            # Contact Rate & Attempts
+            ops_kpis = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name)
+            metrics['Avg. Time Between Site Contacts'] = ops_kpis.get('avg_time_between_site_contacts')
+            
+            contact_attempts_df = calculate_site_contact_attempt_effectiveness(group_df, ts_col_map, status_history_col, site_name)
+            total_attempts = (contact_attempts_df['Number of Site Attempts'] * contact_attempts_df['Total Referrals']).sum()
+            metrics['Avg number of site contact attempts per referral'] = total_attempts / sts_count if sts_count > 0 else 0.0
+            
+            referrals_with_action = sts_count - awaiting_action_count
+            metrics['StS Contact Rate %'] = referrals_with_action / sts_count if sts_count > 0 else 0.0
+        
+        # --- Conversion Rates ---
+        metrics['Qualified to StS %'] = sts_count / pof_count if pof_count > 0 else 0.0
+        metrics['Qualified to Appt %'] = appt_count / pof_count if pof_count > 0 else 0.0
+        metrics['Qualified to ICF %'] = icf_count / pof_count if pof_count > 0 else 0.0
+        metrics['Qualified to Enrollment %'] = enr_count / pof_count if pof_count > 0 else 0.0
+        
+        metrics['StS to Appt %'] = appt_count / sts_count if sts_count > 0 else 0.0
+        metrics['StS to ICF %'] = icf_count / sts_count if sts_count > 0 else 0.0
+        metrics['StS to Enrollment %'] = enr_count / sts_count if sts_count > 0 else 0.0
+        metrics['StS to Lost %'] = lost_count / sts_count if sts_count > 0 else 0.0
+        
+        metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
+        metrics['ICF to Lost %'] = lost_after_icf_count / icf_count if icf_count > 0 else 0.0
+        
+        # --- Lag Times ---
+        metrics['Avg time from StS to Appt Sched.'] = calculate_avg_lag_generic(group_df, sts_ts_col, appt_ts_col)
+        metrics['Avg time from StS to ICF'] = calculate_avg_lag_generic(group_df, sts_ts_col, icf_ts_col)
+        metrics['Avg time from StS to Enrollment'] = calculate_avg_lag_generic(group_df, sts_ts_col, enr_ts_col)
+        
+        metrics_list.append(metrics)
+        
+    return pd.DataFrame(metrics_list)
