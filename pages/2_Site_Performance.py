@@ -235,6 +235,7 @@ with st.expander("Adjust Site Performance Scoring Weights"):
     with c2:
         st.subheader("Speed / Lag Weights")
         st.markdown("_Lower is better for these metrics._")
+        st.session_state.w_site_avg_time_to_first_action = st.slider("Average time to first site action", 0, 100, st.session_state.w_site_avg_time_to_first_action, key="w_s_avg_ttfa")
         st.session_state.w_site_lag_sts_appt = st.slider("Avg time from StS to Appt Sched.", 0, 100, st.session_state.w_site_lag_sts_appt, key="w_s_lag_sts_appt")
         st.session_state.w_site_avg_time_between_contacts = st.slider("Avg. Time Between Site Contacts", 0, 100, st.session_state.w_site_avg_time_between_contacts, key="w_s_avg_tbc")
         st.session_state.w_site_lag_sts_icf = st.slider("Avg time from StS to ICF", 0, 100, st.session_state.w_site_lag_sts_icf, key="w_s_lag_sts_icf")
@@ -252,6 +253,7 @@ weights = {
     "StS to ICF %": st.session_state.w_site_sts_to_icf,
     "StS to Appt %": st.session_state.w_sts_appt,
     "StS Contact Rate %": st.session_state.w_site_contact_rate,
+    "Average time to first site action": st.session_state.w_site_avg_time_to_first_action,
     "Avg time from StS to Appt Sched.": st.session_state.w_site_lag_sts_appt,
     "Avg. Time Between Site Contacts": st.session_state.w_site_avg_time_between_contacts,
     "Avg time from StS to ICF": st.session_state.w_site_lag_sts_icf,
@@ -283,7 +285,7 @@ if not enhanced_site_metrics_df.empty:
             'Site', 'Score', 'Grade', 
             'Total Qualified', 'Pre-Screening Activities Count', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 
             'Lost After ICF Count', 'Lost After StS', 'Total Lost Count', 
-            'Total Referrals Awaiting First Site Action', 'Avg. Time Between Site Contacts', 
+            'Total Referrals Awaiting First Site Action', 'Average time to first site action', 'Avg. Time Between Site Contacts', 
             'Avg number of site contact attempts per referral', 'StS Contact Rate %', 
             'StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'StS to Lost %', 
             'ICF to Enrollment %', 'ICF to Lost %', 
