@@ -4,10 +4,9 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 from datetime import datetime, time
-import plotly.graph_objects as go # New import for advanced charts
-from plotly.subplots import make_subplots # New import for dual-axis
+import plotly.graph_objects as go 
+from plotly.subplots import make_subplots
 
-# Import all calculation functions and the formatting helper
 from pc_calculations import (
     calculate_heatmap_data, 
     calculate_average_time_metrics, 
@@ -18,27 +17,22 @@ from pc_calculations import (
 )
 from helpers import format_days_to_dhm
 
-# --- Page Configuration ---
 st.set_page_config(page_title="PC Performance", page_icon="📞", layout="wide")
 
-# --- Sidebar ---
 with st.sidebar:
     st.logo("assets/logo.png", link="https://1nhealth.com")
 
 st.title("📞 PC Performance Dashboard")
 st.info("This dashboard analyzes the operational efficiency and patterns of the Pre-Screening team's activities.")
 
-# --- Page Guard ---
 if not st.session_state.get('data_processed_successfully', False):
     st.warning("Please upload and process your data on the 'Home & Data Setup' page first.")
     st.stop()
 
-# --- Load Data from Session State ---
 processed_data = st.session_state.referral_data_processed
 ts_col_map = st.session_state.ts_col_map
 parsed_status_history_col = "Parsed_Lead_Status_History" 
 
-# --- Date Filter ---
 st.divider()
 submission_date_col = "Submitted On_DT" 
 if submission_date_col in processed_data.columns:
@@ -66,7 +60,6 @@ else:
     filtered_df = processed_data
 st.divider()
 
-# --- Calculation ---
 with st.spinner("Analyzing status histories for PC activity in selected date range..."):
     if parsed_status_history_col not in filtered_df.columns:
         st.error(f"The required column '{parsed_status_history_col}' was not found in the processed data.")
@@ -79,7 +72,6 @@ with st.spinner("Analyzing status histories for PC activity in selected date ran
     attempt_effectiveness_df = calculate_contact_attempt_effectiveness(filtered_df, ts_col_map, parsed_status_history_col)
     over_time_df = calculate_performance_over_time(filtered_df, ts_col_map)
 
-# --- Display Heatmaps ---
 st.header("Activity Heatmaps")
 st.markdown("Visualizing when key activities occur during the week.")
 col1, col2 = st.columns(2)
@@ -102,7 +94,6 @@ with col2, st.container(border=True):
 
 st.divider()
 
-# --- Display KPIs ---
 st.header("Key Performance Indicators")
 kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
 with kpi_col1, st.container(border=True):
@@ -117,7 +108,6 @@ with kpi_col3, st.container(border=True):
 
 st.divider()
 
-# --- Display Status Flows ---
 st.header("Top 5 Common Status Flows to 'Sent to Site'")
 if not top_flows:
     st.info("There is not enough data in the selected date range to determine common status flows.")
@@ -131,7 +121,6 @@ else:
 
 st.divider()
 
-# --- TTFC Effectiveness ---
 st.header("Time to First Contact Effectiveness")
 st.markdown("Analyzes how the speed of the first contact impacts downstream funnel conversions.")
 if ttfc_df.empty or ttfc_df['Attempts'].sum() == 0:
@@ -148,7 +137,6 @@ else:
 
 st.divider()
 
-# --- Contact Attempt Effectiveness ---
 st.header("Contact Attempt Effectiveness")
 st.markdown("Analyzes how the number of pre-site status changes impacts downstream funnel conversions.")
 if (attempt_effectiveness_df.empty or 
@@ -167,7 +155,6 @@ else:
 
 st.divider()
 
-# --- THIS IS THE FINAL, UPDATED CHARTING SECTION ---
 st.header("Performance Over Time (Weekly)")
 st.markdown("Track key metrics on a weekly basis to identify trends.")
 
@@ -175,42 +162,35 @@ if over_time_df.empty:
     st.info("Not enough data in the selected date range to generate a performance trend graph.")
 else:
     with st.container(border=True):
-        # The secondary axis metric is fixed
         secondary_metric = 'Total Qualified per Week'
         
-        # The user chooses the primary metric from all other available columns
         primary_metric_options = [col for col in over_time_df.columns if col != secondary_metric]
         primary_metric = st.selectbox(
             "Select a primary metric to display on the chart:",
             options=primary_metric_options
         )
         
-        # Toggle to turn the secondary axis on or off
         compare_with_volume = st.toggle(f"Compare with {secondary_metric}", value=True)
         
-        # --- Charting Logic ---
-        # Create figure with secondary y-axis
         fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-        # Add primary metric trace
+        # --- THIS IS THE MODIFIED LINE ---
         fig.add_trace(
-            go.Scatter(x=over_time_df.index, y=over_time_df[primary_metric], name=primary_metric),
+            go.Scatter(x=over_time_df.index, y=over_time_df[primary_metric], name=primary_metric, 
+                       line=dict(color='#53CA97')), # Added color here
             secondary_y=False,
         )
 
-        # Add secondary metric trace if the toggle is on
         if compare_with_volume:
             fig.add_trace(
                 go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')),
                 secondary_y=True,
             )
 
-        # Set y-axes titles
         fig.update_yaxes(title_text=f"<b>{primary_metric}</b>", secondary_y=False)
         if compare_with_volume:
             fig.update_yaxes(title_text=f"<b>{secondary_metric}</b>", secondary_y=True, showgrid=False)
 
-        # Set figure layout
         fig.update_layout(
             title_text=f"Weekly Trend: {primary_metric}",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
