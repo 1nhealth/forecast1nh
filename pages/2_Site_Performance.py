@@ -3,7 +3,14 @@ import streamlit as st
 import pandas as pd
 from scoring import score_sites
 from helpers import format_performance_df, format_days_to_dhm
-from calculations import calculate_site_operational_kpis, calculate_site_ttfc_effectiveness, calculate_site_contact_attempt_effectiveness
+from calculations import (
+    calculate_site_operational_kpis, 
+    calculate_site_ttfc_effectiveness, 
+    calculate_site_contact_attempt_effectiveness,
+    calculate_site_performance_over_time
+)
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -98,7 +105,6 @@ with st.container(border=True):
             use_container_width=True
         )
 
-    # --- NEW SECTION ---
     st.divider()
     st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
     st.markdown("Analyzes how the number of site contact attempts (post-'Sent to Site') impacts downstream funnel conversions.")
@@ -136,6 +142,67 @@ with st.container(border=True):
             hide_index=True,
             use_container_width=True
         )
+    
+    # --- NEW SECTION: Performance Over Time ---
+    st.divider()
+    st.subheader(f"Performance Over Time (Weekly): {selected_site}")
+    st.markdown("Track key metrics on a weekly basis to identify trends. Metrics are calculated based on cohorts of referrals Sent to Site each week.")
+
+    over_time_df = calculate_site_performance_over_time(
+        st.session_state.referral_data_processed,
+        st.session_state.ts_col_map,
+        "Parsed_Lead_Status_History",
+        selected_site
+    )
+
+    if over_time_df.empty:
+        st.info(f"Not enough data for '{selected_site}' to generate a performance trend graph.")
+    else:
+        secondary_metric = 'Total Sent to Site per Week'
+        
+        primary_metric_options = [
+            'Sent to Site -> Appointment %',
+            'Sent to Site -> ICF %',
+            'Sent to Site -> Enrollment %',
+            'Total Appointments per Week',
+            'Average Time to First Site Action (Days)'
+        ]
+        primary_metric_options = [opt for opt in primary_metric_options if opt in over_time_df.columns]
+        
+        if not primary_metric_options:
+            st.warning("No performance metrics could be calculated for the trend chart.")
+        else:
+            primary_metric = st.selectbox(
+                "Select a primary metric to display on the chart:",
+                options=primary_metric_options,
+                key=f"site_perf_time_selector_{selected_site.replace(' ', '_')}"
+            )
+            
+            compare_with_volume = st.toggle(f"Compare with {secondary_metric}", value=True, key=f"site_perf_time_toggle_{selected_site.replace(' ', '_')}")
+            
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+            fig.add_trace(
+                go.Scatter(x=over_time_df.index, y=over_time_df[primary_metric], name=primary_metric),
+                secondary_y=False,
+            )
+
+            if compare_with_volume and secondary_metric in over_time_df.columns:
+                fig.add_trace(
+                    go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')),
+                    secondary_y=True,
+                )
+
+            fig.update_yaxes(title_text=f"<b>{primary_metric}</b>", secondary_y=False)
+            if compare_with_volume and secondary_metric in over_time_df.columns:
+                fig.update_yaxes(title_text=f"<b>{secondary_metric}</b>", secondary_y=True, showgrid=False)
+
+            fig.update_layout(
+                title_text=f"Weekly Trend for {selected_site}: {primary_metric}",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
