@@ -402,7 +402,7 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
     
     return result
 
-# --- NEW FUNCTION ---
+# --- UPDATED FUNCTION ---
 def calculate_site_performance_over_time(df, ts_col_map, status_history_col, selected_site="Overall"):
     """
     Calculates key site performance metrics over time on a weekly basis,
@@ -432,33 +432,39 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
     if site_df.empty:
         return pd.DataFrame()
 
-    avg_sts_to_enr_lag = calculate_avg_lag_generic(site_df, sts_ts_col, enr_ts_col)
-    maturity_days = (avg_sts_to_enr_lag * 1.5) if pd.notna(avg_sts_to_enr_lag) else 60
+    # --- CHANGE 1: Use a more appropriate lag for maturity ---
+    avg_sts_to_icf_lag = calculate_avg_lag_generic(site_df, sts_ts_col, icf_ts_col)
+    maturity_days = (avg_sts_to_icf_lag * 1.5) if pd.notna(avg_sts_to_icf_lag) else 45
 
     time_df = site_df.set_index(sts_ts_col)
 
-    # Use a helper function for calculating weekly metrics to avoid repetition
     def get_weekly_metrics(week_df):
         mature_df = week_df[week_df.index + pd.Timedelta(days=maturity_days) < pd.Timestamp.now()]
-        
-        # Calculate operational KPIs for the weekly cohort
         kpis = calculate_site_operational_kpis(week_df.reset_index(), ts_col_map, status_history_col, "Overall")
+
+        # --- CHANGE 2: Return np.nan for immature cohorts instead of 0 ---
+        if len(mature_df) > 0:
+            appt_rate = mature_df[appt_ts_col].notna().sum() / len(mature_df)
+            icf_rate = mature_df[icf_ts_col].notna().sum() / len(mature_df)
+            enr_rate = mature_df[enr_ts_col].notna().sum() / len(mature_df)
+        else:
+            appt_rate, icf_rate, enr_rate = np.nan, np.nan, np.nan
 
         return pd.Series({
             'Total Sent to Site per Week': len(week_df),
-            'Sent to Site -> Appointment %': (mature_df[appt_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0),
-            'Sent to Site -> ICF %': (mature_df[icf_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0),
-            'Sent to Site -> Enrollment %': (mature_df[enr_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0),
+            'Sent to Site -> Appointment %': appt_rate,
+            'Sent to Site -> ICF %': icf_rate,
+            'Sent to Site -> Enrollment %': enr_rate,
             'Total Appointments per Week': week_df[appt_ts_col].notna().sum(),
             'Average Time to First Site Action (Days)': kpis['avg_sts_to_first_action']
         })
 
     weekly_summary = time_df.resample('W').apply(get_weekly_metrics)
 
-    # Convert percentages
     for col in ['Sent to Site -> Appointment %', 'Sent to Site -> ICF %', 'Sent to Site -> Enrollment %']:
         weekly_summary[col] *= 100
 
-    weekly_summary.fillna(method='ffill', inplace=True)
+    # --- CHANGE 3: Remove the forward fill ---
+    # weekly_summary.fillna(method='ffill', inplace=True) # This line is removed
 
     return weekly_summary
