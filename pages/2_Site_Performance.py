@@ -8,7 +8,7 @@ from calculations import (
     calculate_site_ttfc_effectiveness, 
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
-    calculate_enhanced_site_metrics # Import the new master function
+    calculate_enhanced_site_metrics
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -29,7 +29,7 @@ with st.container(border=True):
     st.subheader("Site Operational Analysis")
     st.markdown("Analyze site-level efficiency. Select a specific site or view the overall average for all metrics in this section.")
 
-    site_list = st.session_state.site_metrics_calculated['Site'].unique().tolist()
+    site_list = st.session_state.referral_data_processed['Site'].unique().tolist()
     site_list = [site for site in site_list if site != "Unassigned Site"]
     options = ["Overall"] + sorted(site_list)
     
@@ -219,7 +219,6 @@ with st.container(border=True):
 
 st.divider()
 
-# --- NEW: Revamped Slider UI ---
 with st.expander("Adjust Site Performance Scoring Weights"):
     st.markdown("Adjust the importance of different metrics in the overall site score. Changes here do not affect the Ad Performance page.")
     
@@ -247,8 +246,6 @@ with st.expander("Adjust Site Performance Scoring Weights"):
         st.session_state.w_site_icf_to_lost = st.slider("ICF to Lost %", 0, 100, st.session_state.w_site_icf_to_lost, key="w_s_icf_lost")
         st.session_state.w_site_sts_to_lost = st.slider("StS to Lost %", 0, 100, st.session_state.w_site_sts_to_lost, key="w_s_sts_lost")
 
-# --- Calculation Logic ---
-# NEW: Build weights dictionary from the new site-specific keys
 weights = {
     "StS to Enrollment %": st.session_state.w_site_sts_to_enr,
     "ICF to Enrollment %": st.session_state.w_icf_to_enroll,
@@ -261,14 +258,12 @@ weights = {
     "Total Referrals Awaiting First Site Action": st.session_state.w_site_awaiting_action,
     "ICF to Lost %": st.session_state.w_site_icf_to_lost,
     "StS to Lost %": st.session_state.w_site_sts_to_lost,
-    # Add older, still-relevant metrics from top of funnel
     'Qualified to Enrollment %': st.session_state.w_qual_to_enroll,
     'Qualified to ICF %': st.session_state.w_qual_to_icf,
 }
 total_weight = sum(abs(w) for w in weights.values())
 weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
 
-# Call the new calculation function
 enhanced_site_metrics_df = calculate_enhanced_site_metrics(
     st.session_state.referral_data_processed,
     st.session_state.ordered_stages,
@@ -284,11 +279,10 @@ if not enhanced_site_metrics_df.empty:
     with st.container(border=True):
         st.subheader("Site Performance Ranking")
         
-        # NEW: Updated column list for display
         display_cols = [
             'Site', 'Score', 'Grade', 
             'Total Qualified', 'Pre-Screening Activities Count', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 
-            'Lost After ICF Count', 'Total Lost Count', 
+            'Lost After ICF Count', 'Lost After StS', 'Total Lost Count', 
             'Total Referrals Awaiting First Site Action', 'Avg. Time Between Site Contacts', 
             'Avg number of site contact attempts per referral', 'StS Contact Rate %', 
             'StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'StS to Lost %', 
@@ -302,9 +296,7 @@ if not enhanced_site_metrics_df.empty:
         if display_cols_exist:
             final_display_df = ranked_sites_df[display_cols_exist]
             if not final_display_df.empty:
-                rename_map = {
-                    'Pre-Screening Activities Count': 'PSA Count',
-                }
+                rename_map = { 'Pre-Screening Activities Count': 'PSA Count' }
                 final_display_df = final_display_df.rename(columns=rename_map)
                 
                 formatted_df = format_performance_df(final_display_df)
