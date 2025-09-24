@@ -7,7 +7,8 @@ from calculations import (
     calculate_site_operational_kpis, 
     calculate_site_ttfc_effectiveness, 
     calculate_site_contact_attempt_effectiveness,
-    calculate_site_performance_over_time
+    calculate_site_performance_over_time,
+    calculate_enhanced_site_metrics # Import the new master function
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -187,13 +188,11 @@ with st.container(border=True):
 
             fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-            # --- CHANGE: Plot Actuals Trace ---
             fig.add_trace(
                 go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name,
                            mode='lines+markers', line=dict(color='#53CA97')),
                 secondary_y=False,
             )
-            # --- CHANGE: Plot Projected Trace (if it exists) ---
             if projected_col and projected_col in over_time_df.columns:
                 fig.add_trace(
                     go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend",
@@ -220,66 +219,82 @@ with st.container(border=True):
 
 st.divider()
 
-# --- Synced Assumption Controls ---
-with st.expander("Adjust Performance Scoring Weights"):
-    st.session_state.w_qual_to_enroll = st.slider("Qual (POF) -> Enrollment %", 0, 100, st.session_state.w_qual_to_enroll, key="w_q_enr_site")
-    st.session_state.w_icf_to_enroll = st.slider("ICF -> Enrollment %", 0, 100, st.session_state.w_icf_to_enroll, key="w_icf_enr_site")
-    st.session_state.w_qual_to_icf = st.slider("Qual (POF) -> ICF %", 0, 100, st.session_state.w_qual_to_icf, key="w_q_icf_site")
-    st.session_state.w_avg_ttc = st.slider("Avg Time to Contact (Sites)", 0, 100, st.session_state.w_avg_ttc, help="Lower is better.", key="w_ttc_site")
-    st.session_state.w_site_sf = st.slider("Site Screen Fail %", 0, 100, st.session_state.w_site_sf, help="Lower is better.", key="w_ssf_site")
-    st.session_state.w_sts_appt = st.slider("StS -> Appt Sched %", 0, 100, st.session_state.w_sts_appt, key="w_sts_appt_site")
-    st.session_state.w_appt_icf = st.slider("Appt Sched -> ICF %", 0, 100, st.session_state.w_appt_icf, key="w_appt_icf_site")
-    st.session_state.w_lag_q_icf = st.slider("Lag Qual -> ICF (Days)", 0, 100, st.session_state.w_lag_q_icf, help="Lower is better.", key="w_lag_site")
-    st.session_state.w_generic_sf = st.slider("Generic Screen Fail % (Ads)", 0, 100, st.session_state.w_generic_sf, help="Lower is better.", key="w_gsf_site")
-    st.session_state.w_proj_lag = st.slider("Generic Projection Lag (Ads)", 0, 100, st.session_state.w_proj_lag, help="Lower is better.", key="w_gpl_site")
-    st.caption("Changes will apply automatically and be reflected on the Ad Performance page.")
+# --- NEW: Revamped Slider UI ---
+with st.expander("Adjust Site Performance Scoring Weights"):
+    st.markdown("Adjust the importance of different metrics in the overall site score. Changes here do not affect the Ad Performance page.")
+    
+    c1, c2, c3 = st.columns(3)
+    
+    with c1:
+        st.subheader("Conversion Weights")
+        st.session_state.w_site_sts_to_enr = st.slider("StS -> Enrollment %", 0, 100, st.session_state.w_site_sts_to_enr, key="w_s_sts_enr")
+        st.session_state.w_icf_to_enroll = st.slider("ICF -> Enrollment %", 0, 100, st.session_state.w_icf_to_enroll, key="w_s_icf_enr")
+        st.session_state.w_site_sts_to_icf = st.slider("StS -> ICF %", 0, 100, st.session_state.w_site_sts_to_icf, key="w_s_sts_icf")
+        st.session_state.w_sts_appt = st.slider("StS -> Appt %", 0, 100, st.session_state.w_sts_appt, key="w_s_sts_appt")
+        st.session_state.w_site_contact_rate = st.slider("StS Contact Rate %", 0, 100, st.session_state.w_site_contact_rate, key="w_s_contact_rate")
+
+    with c2:
+        st.subheader("Speed / Lag Weights")
+        st.markdown("_Lower is better for these metrics._")
+        st.session_state.w_site_lag_sts_appt = st.slider("Avg time from StS to Appt Sched.", 0, 100, st.session_state.w_site_lag_sts_appt, key="w_s_lag_sts_appt")
+        st.session_state.w_site_avg_time_between_contacts = st.slider("Avg. Time Between Site Contacts", 0, 100, st.session_state.w_site_avg_time_between_contacts, key="w_s_avg_tbc")
+        st.session_state.w_site_lag_sts_icf = st.slider("Avg time from StS to ICF", 0, 100, st.session_state.w_site_lag_sts_icf, key="w_s_lag_sts_icf")
+        st.session_state.w_site_awaiting_action = st.slider("Total Referrals Awaiting First Site Action", 0, 100, st.session_state.w_site_awaiting_action, key="w_s_await")
+        
+    with c3:
+        st.subheader("Negative Outcome Weights")
+        st.markdown("_Lower is better for these metrics._")
+        st.session_state.w_site_icf_to_lost = st.slider("ICF to Lost %", 0, 100, st.session_state.w_site_icf_to_lost, key="w_s_icf_lost")
+        st.session_state.w_site_sts_to_lost = st.slider("StS to Lost %", 0, 100, st.session_state.w_site_sts_to_lost, key="w_s_sts_lost")
 
 # --- Calculation Logic ---
+# NEW: Build weights dictionary from the new site-specific keys
 weights = {
-    "Qual to Enrollment %": st.session_state.w_qual_to_enroll, "ICF to Enrollment %": st.session_state.w_icf_to_enroll,
-    "Qual -> ICF %": st.session_state.w_qual_to_icf, "Avg TTC (Days)": st.session_state.w_avg_ttc,
-    "Site Screen Fail %": st.session_state.w_site_sf, "StS -> Appt %": st.session_state.w_sts_appt,
-    "Appt -> ICF %": st.session_state.w_appt_icf, "Lag Qual -> ICF (Days)": st.session_state.w_lag_q_icf,
-    "Screen Fail % (from ICF)": st.session_state.w_generic_sf, "Projection Lag (Days)": st.session_state.w_proj_lag,
+    "StS to Enrollment %": st.session_state.w_site_sts_to_enr,
+    "ICF to Enrollment %": st.session_state.w_icf_to_enroll,
+    "StS to ICF %": st.session_state.w_site_sts_to_icf,
+    "StS to Appt %": st.session_state.w_sts_appt,
+    "StS Contact Rate %": st.session_state.w_site_contact_rate,
+    "Avg time from StS to Appt Sched.": st.session_state.w_site_lag_sts_appt,
+    "Avg. Time Between Site Contacts": st.session_state.w_site_avg_time_between_contacts,
+    "Avg time from StS to ICF": st.session_state.w_site_lag_sts_icf,
+    "Total Referrals Awaiting First Site Action": st.session_state.w_site_awaiting_action,
+    "ICF to Lost %": st.session_state.w_site_icf_to_lost,
+    "StS to Lost %": st.session_state.w_site_sts_to_lost,
+    # Add older, still-relevant metrics from top of funnel
+    'Qualified to Enrollment %': st.session_state.w_qual_to_enroll,
+    'Qualified to ICF %': st.session_state.w_qual_to_icf,
 }
 total_weight = sum(abs(w) for w in weights.values())
 weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
 
-site_metrics = st.session_state.site_metrics_calculated
+# Call the new calculation function
+enhanced_site_metrics_df = calculate_enhanced_site_metrics(
+    st.session_state.referral_data_processed,
+    st.session_state.ordered_stages,
+    st.session_state.ts_col_map,
+    "Parsed_Lead_Status_History"
+)
 
-if site_metrics is not None and not site_metrics.empty and weights_normalized:
-    ranked_sites_df = score_sites(site_metrics, weights_normalized)
-
-    st.subheader("Key Performance Indicators (Overall)")
+if not enhanced_site_metrics_df.empty:
+    ranked_sites_df = score_sites(enhanced_site_metrics_df, weights_normalized)
     
-    total_qualified = site_metrics['Total Qualified'].sum() if 'Total Qualified' in site_metrics.columns else 0
-    total_enrollments = site_metrics['Enrollment Count'].sum() if 'Enrollment Count' in site_metrics.columns else 0
-    total_icfs = site_metrics['Signed ICF Count'].sum() if 'Signed ICF Count' in site_metrics.columns else 0
-    
-    overall_qual_to_icf_rate = (total_icfs / total_qualified) * 100 if total_qualified > 0 else 0
-
-    kpi_cols = st.columns(3)
-    with kpi_cols[0], st.container(border=True):
-        st.metric(label="Total Qualified Leads", value=f"{total_qualified:,}")
-    with kpi_cols[1], st.container(border=True):
-        st.metric(label="Total Enrollments", value=f"{total_enrollments:,}")
-    with kpi_cols[2], st.container(border=True):
-        st.metric(label="Overall Qualified to ICF Rate", value=f"{overall_qual_to_icf_rate:.1f}%")
-            
     st.divider()
 
     with st.container(border=True):
         st.subheader("Site Performance Ranking")
         
+        # NEW: Updated column list for display
         display_cols = [
             'Site', 'Score', 'Grade', 
-            'Total Qualified', 
-            'Pre-Screening Activities Count', 'Sent To Site Count',
-            'Appointment Scheduled Count', 'Signed ICF Count', 'Enrollment Count', 
-            'Qual to Enrollment %', 'ICF to Enrollment %', 'Qual -> ICF %', 
-            'POF -> PSA %', 'PSA -> StS %', 'StS -> Appt %', 'Appt -> ICF %', 
-            'Avg TTC (Days)', 'Site Screen Fail %', 'Lag Qual -> ICF (Days)', 
-            'Site Projection Lag (Days)'
+            'Total Qualified', 'Pre-Screening Activities Count', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 
+            'Lost After ICF Count', 'Total Lost Count', 
+            'Total Referrals Awaiting First Site Action', 'Avg. Time Between Site Contacts', 
+            'Avg number of site contact attempts per referral', 'StS Contact Rate %', 
+            'StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'StS to Lost %', 
+            'ICF to Enrollment %', 'ICF to Lost %', 
+            'Avg time from StS to Appt Sched.', 'Avg time from StS to ICF', 'Avg time from StS to Enrollment',
+            'Qualified to StS %', 'Qualified to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %'
         ]
         
         display_cols_exist = [col for col in display_cols if col in ranked_sites_df.columns]
@@ -289,10 +304,6 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
             if not final_display_df.empty:
                 rename_map = {
                     'Pre-Screening Activities Count': 'PSA Count',
-                    'Sent To Site Count': 'StS Count',
-                    'Appointment Scheduled Count': 'Appt Count',
-                    'Signed ICF Count': 'ICF Count',
-                    'Enrollment Count': 'Enrollments'
                 }
                 final_display_df = final_display_df.rename(columns=rename_map)
                 
@@ -303,4 +314,4 @@ if site_metrics is not None and not site_metrics.empty and weights_normalized:
         else:
             st.warning("None of the standard display columns were found.")
 else:
-    st.warning("Site metrics have not been calculated.")
+    st.warning("Enhanced site metrics could not be calculated.")
