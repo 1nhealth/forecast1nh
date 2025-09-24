@@ -91,15 +91,24 @@ with st.container(border=True):
         display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         
         display_df.rename(columns={
-            'Attempts': 'Total Referrals', 'Total_Appts': 'Total Appointments',
-            'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'
+            'Attempts': 'Total Referrals',
+            'Total_Appts': 'Total Appointments',
+            'Total_ICF': 'Total ICFs',
+            'Total_Enrolled': 'Total Enrollments'
         }, inplace=True)
         
         final_cols = [
-            'Time to First Site Action', 'Total Referrals', 'Total Appointments', 'Appt. Rate',
-            'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate'
+            'Time to First Site Action', 'Total Referrals',
+            'Total Appointments', 'Appt. Rate',
+            'Total ICFs', 'ICF Rate',
+            'Total Enrollments', 'Enrollment Rate'
         ]
-        st.dataframe(display_df[final_cols], hide_index=True, use_container_width=True)
+        
+        st.dataframe(
+            display_df[final_cols],
+            hide_index=True,
+            use_container_width=True
+        )
 
     st.divider()
     st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
@@ -121,14 +130,23 @@ with st.container(border=True):
         display_df_contact['Enrollment Rate'] = display_df_contact['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         
         display_df_contact.rename(columns={
-            'Total_Appts': 'Total Appointments', 'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'
+            'Total_Appts': 'Total Appointments',
+            'Total_ICF': 'Total ICFs',
+            'Total_Enrolled': 'Total Enrollments'
         }, inplace=True)
         
         final_cols_contact = [
-            'Number of Site Attempts', 'Total Referrals', 'Total Appointments', 'Appt. Rate',
-            'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate'
+            'Number of Site Attempts', 'Total Referrals',
+            'Total Appointments', 'Appt. Rate',
+            'Total ICFs', 'ICF Rate',
+            'Total Enrollments', 'Enrollment Rate'
         ]
-        st.dataframe(display_df_contact[final_cols_contact], hide_index=True, use_container_width=True)
+        
+        st.dataframe(
+            display_df_contact[final_cols_contact],
+            hide_index=True,
+            use_container_width=True
+        )
     
     st.divider()
     st.subheader(f"Performance Over Time (Weekly): {selected_site}")
@@ -174,12 +192,23 @@ with st.container(border=True):
 
             fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-            fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name, mode='lines+markers', line=dict(color='#53CA97')), secondary_y=False)
+            fig.add_trace(
+                go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name,
+                           mode='lines+markers', line=dict(color='#53CA97')),
+                secondary_y=False,
+            )
             if projected_col and projected_col in over_time_df.columns:
-                fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend", mode='lines', line=dict(color='#53CA97', dash='dot'), showlegend=False), secondary_y=False)
+                fig.add_trace(
+                    go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend",
+                               mode='lines', line=dict(color='#53CA97', dash='dot'), showlegend=False),
+                    secondary_y=False,
+                )
 
             if compare_with_volume and secondary_metric in over_time_df.columns:
-                fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')), secondary_y=True)
+                fig.add_trace(
+                    go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')),
+                    secondary_y=True,
+                )
 
             fig.update_yaxes(title_text=f"<b>{primary_metric_display_name}</b>", secondary_y=False)
             if compare_with_volume and secondary_metric in over_time_df.columns:
@@ -189,6 +218,7 @@ with st.container(border=True):
                 title_text=f"Weekly Trend for {selected_site}: {primary_metric_display_name}",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
+            
             st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
@@ -201,9 +231,9 @@ with st.expander("Adjust Site Performance Scoring Weights"):
     with c1:
         st.subheader("Conversion Weights")
         st.slider("StS -> Enrollment %", 0, 100, key="w_site_sts_to_enr")
-        st.slider("ICF -> Enrollment %", 0, 100, key="w_icf_to_enroll")
+        st.slider("ICF -> Enrollment %", 0, 100, key="w_site_icf_to_enroll")
         st.slider("StS -> ICF %", 0, 100, key="w_site_sts_to_icf")
-        st.slider("StS -> Appt %", 0, 100, key="w_sts_appt")
+        st.slider("StS -> Appt %", 0, 100, key="w_site_sts_appt")
         st.slider("StS Contact Rate %", 0, 100, key="w_site_contact_rate")
 
     with c2:
@@ -221,13 +251,12 @@ with st.expander("Adjust Site Performance Scoring Weights"):
         st.slider("SF or Lost After ICF %", 0, 100, key="w_site_icf_to_lost")
         st.slider("StS to Lost %", 0, 100, key="w_site_sts_to_lost")
 
-    # --- FIX: Add the Apply button ---
-    if st.button("Apply & Recalculate Score", type="primary", use_container_width=True):
+    if st.button("Apply & Recalculate Score", type="primary", use_container_width=True, key="apply_site_weights"):
         weights = {
             "StS to Enrollment %": st.session_state.w_site_sts_to_enr,
-            "ICF to Enrollment %": st.session_state.w_icf_to_enroll,
+            "ICF to Enrollment %": st.session_state.w_site_icf_to_enroll,
             "StS to ICF %": st.session_state.w_site_sts_to_icf,
-            "StS to Appt %": st.session_state.w_sts_appt,
+            "StS to Appt %": st.session_state.w_site_sts_appt,
             "StS Contact Rate %": st.session_state.w_site_contact_rate,
             "Average time to first site action": st.session_state.w_site_avg_time_to_first_action,
             "Avg time from StS to Appt Sched.": st.session_state.w_site_lag_sts_appt,
@@ -236,12 +265,12 @@ with st.expander("Adjust Site Performance Scoring Weights"):
             "Total Referrals Awaiting First Site Action": st.session_state.w_site_awaiting_action,
             "SF or Lost After ICF %": st.session_state.w_site_icf_to_lost,
             "StS to Lost %": st.session_state.w_site_sts_to_lost,
-            'Qualified to Enrollment %': st.session_state.w_qual_to_enroll,
-            'Qualified to ICF %': st.session_state.w_qual_to_icf,
+            'Qualified to Enrollment %': st.session_state.w_site_qual_to_enroll,
+            'Qualified to ICF %': st.session_state.w_site_qual_to_icf,
         }
         total_weight = sum(abs(w) for w in weights.values())
         weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
-
+        
         enhanced_site_metrics_df = calculate_enhanced_site_metrics(
             st.session_state.referral_data_processed,
             st.session_state.ordered_stages,
@@ -271,7 +300,8 @@ with st.container(border=True):
         
         final_display_df = st.session_state.ranked_sites_df[display_cols_exist]
         rename_map = { 
-            'Pre-Screening Activities Count': 'PSA Count', 'SF or Lost After ICF Count': 'SF/Lost Post-ICF',
+            'Pre-Screening Activities Count': 'PSA Count',
+            'SF or Lost After ICF Count': 'SF/Lost Post-ICF',
             'SF or Lost After ICF %': 'SF/Lost Post-ICF %'
         }
         final_display_df = final_display_df.rename(columns=rename_map)
