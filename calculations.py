@@ -19,7 +19,7 @@ def calculate_avg_lag_generic(df, col_from, col_to):
     valid_df = df.dropna(subset=[col_from, col_to])
     if valid_df.empty: return np.nan
 
-    diff = pd.to_datetime(valid_df[col_to]) - pd.to_datetime(valid_df[col_from])
+    diff = pd.to_datetime(valid_df[col_to]) - pd.to_datetime(valid_df[col_to])
     diff_positive = diff[diff >= pd.Timedelta(days=0)]
 
     return diff_positive.mean().total_seconds() / (60 * 60 * 24) if not diff_positive.empty else np.nan
@@ -406,13 +406,12 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
 def calculate_site_performance_over_time(df, ts_col_map, status_history_col, selected_site="Overall"):
     """
     Calculates key site performance metrics over time on a weekly basis,
-    with transit-time adjustment for conversion percentages. The weekly cohorts
-    are based on the 'Sent To Site' timestamp.
+    with transit-time adjustment and trend projection for conversion percentages.
+    The weekly cohorts are based on the 'Sent To Site' timestamp.
     """
     if df is None or df.empty:
         return pd.DataFrame()
 
-    # Define key timestamp columns
     sts_ts_col = ts_col_map.get(STAGE_SENT_TO_SITE)
     appt_ts_col = ts_col_map.get(STAGE_APPOINTMENT_SCHEDULED)
     icf_ts_col = ts_col_map.get(STAGE_SIGNED_ICF)
@@ -421,7 +420,6 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
     if not all(col in df.columns for col in [sts_ts_col, appt_ts_col, icf_ts_col, enr_ts_col]):
         return pd.DataFrame()
 
-    # Filter by selected site
     if selected_site != "Overall":
         if 'Site' not in df.columns: return pd.DataFrame()
         site_df = df[df['Site'] == selected_site].copy()
@@ -432,39 +430,59 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
     if site_df.empty:
         return pd.DataFrame()
 
-    # --- CHANGE 1: Use a more appropriate lag for maturity ---
     avg_sts_to_icf_lag = calculate_avg_lag_generic(site_df, sts_ts_col, icf_ts_col)
     maturity_days = (avg_sts_to_icf_lag * 1.5) if pd.notna(avg_sts_to_icf_lag) else 45
 
     time_df = site_df.set_index(sts_ts_col)
 
     def get_weekly_metrics(week_df):
-        mature_df = week_df[week_df.index + pd.Timedelta(days=maturity_days) < pd.Timestamp.now()]
+        is_mature = (week_df.index.max() + pd.Timedelta(days=maturity_days)) < pd.Timestamp.now()
         kpis = calculate_site_operational_kpis(week_df.reset_index(), ts_col_map, status_history_col, "Overall")
-
-        # --- CHANGE 2: Return np.nan for immature cohorts instead of 0 ---
-        if len(mature_df) > 0:
-            appt_rate = mature_df[appt_ts_col].notna().sum() / len(mature_df)
-            icf_rate = mature_df[icf_ts_col].notna().sum() / len(mature_df)
-            enr_rate = mature_df[enr_ts_col].notna().sum() / len(mature_df)
-        else:
-            appt_rate, icf_rate, enr_rate = np.nan, np.nan, np.nan
+        
+        rate_appt, rate_icf, rate_enr = np.nan, np.nan, np.nan
+        if is_mature and len(week_df) > 0:
+            rate_appt = week_df[appt_ts_col].notna().sum() / len(week_df)
+            rate_icf = week_df[icf_ts_col].notna().sum() / len(week_df)
+            rate_enr = week_df[enr_ts_col].notna().sum() / len(week_df)
 
         return pd.Series({
             'Total Sent to Site per Week': len(week_df),
-            'Sent to Site -> Appointment %': appt_rate,
-            'Sent to Site -> ICF %': icf_rate,
-            'Sent to Site -> Enrollment %': enr_rate,
+            'Sent to Site -> Appointment %': rate_appt,
+            'Sent to Site -> ICF %': rate_icf,
+            'Sent to Site -> Enrollment %': rate_enr,
             'Total Appointments per Week': week_df[appt_ts_col].notna().sum(),
             'Average Time to First Site Action (Days)': kpis['avg_sts_to_first_action']
         })
 
     weekly_summary = time_df.resample('W').apply(get_weekly_metrics)
 
-    for col in ['Sent to Site -> Appointment %', 'Sent to Site -> ICF %', 'Sent to Site -> Enrollment %']:
-        weekly_summary[col] *= 100
-
-    # --- CHANGE 3: Remove the forward fill ---
-    # weekly_summary.fillna(method='ffill', inplace=True) # This line is removed
+    # --- NEW: Logic for Hybrid Actual + Projected Chart ---
+    for rate_col in ['Sent to Site -> Appointment %', 'Sent to Site -> ICF %', 'Sent to Site -> Enrollment %']:
+        actual_col_name = f"{rate_col} (Actual)"
+        projected_col_name = f"{rate_col} (Projected)"
+        
+        # Create the actuals column
+        weekly_summary[actual_col_name] = weekly_summary[rate_col] * 100
+        
+        # Calculate a 4-week rolling average on the actual (mature) data
+        rolling_avg = weekly_summary[actual_col_name].rolling(window=4, min_periods=1).mean()
+        
+        # Find the last valid point in the actuals and its corresponding rolling average
+        last_valid_index = weekly_summary[actual_col_name].last_valid_index()
+        if last_valid_index is not None:
+            last_value = rolling_avg.loc[last_valid_index]
+            
+            # Create the projection series
+            projected_series = pd.Series(np.nan, index=weekly_summary.index)
+            # The projection starts from the last valid point
+            projected_series.loc[last_valid_index:] = last_value
+            # Fill forward to the end of the dataframe
+            projected_series.ffill(inplace=True)
+            # Remove the value at the connection point to avoid plotting it twice
+            projected_series.loc[last_valid_index] = np.nan
+            
+            weekly_summary[projected_col_name] = projected_series
+        else:
+            weekly_summary[projected_col_name] = np.nan
 
     return weekly_summary
