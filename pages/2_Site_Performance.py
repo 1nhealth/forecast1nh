@@ -244,7 +244,7 @@ with st.expander("Adjust Site Performance Scoring Weights"):
     with c3:
         st.subheader("Negative Outcome Weights")
         st.markdown("_Lower is better for these metrics._")
-        st.session_state.w_site_icf_to_lost = st.slider("ICF to Lost %", 0, 100, st.session_state.w_site_icf_to_lost, key="w_s_icf_lost")
+        st.session_state.w_site_icf_to_lost = st.slider("SF or Lost After ICF %", 0, 100, st.session_state.w_site_icf_to_lost, key="w_s_icf_lost")
         st.session_state.w_site_sts_to_lost = st.slider("StS to Lost %", 0, 100, st.session_state.w_site_sts_to_lost, key="w_s_sts_lost")
 
 weights = {
@@ -258,7 +258,7 @@ weights = {
     "Avg. Time Between Site Contacts": st.session_state.w_site_avg_time_between_contacts,
     "Avg time from StS to ICF": st.session_state.w_site_lag_sts_icf,
     "Total Referrals Awaiting First Site Action": st.session_state.w_site_awaiting_action,
-    "ICF to Lost %": st.session_state.w_site_icf_to_lost,
+    "SF or Lost After ICF %": st.session_state.w_site_icf_to_lost,
     "StS to Lost %": st.session_state.w_site_sts_to_lost,
     'Qualified to Enrollment %': st.session_state.w_qual_to_enroll,
     'Qualified to ICF %': st.session_state.w_qual_to_icf,
@@ -284,11 +284,11 @@ if not enhanced_site_metrics_df.empty:
         display_cols = [
             'Site', 'Score', 'Grade', 
             'Total Qualified', 'Pre-Screening Activities Count', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 
-            'Lost After ICF Count', 'Lost After StS', 'Total Lost Count', 
+            'SF or Lost After ICF Count', 'Lost After StS', 'Total Lost Count', 
             'Total Referrals Awaiting First Site Action', 'Average time to first site action', 'Avg. Time Between Site Contacts', 
             'Avg number of site contact attempts per referral', 'StS Contact Rate %', 
             'StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'StS to Lost %', 
-            'ICF to Enrollment %', 'ICF to Lost %', 
+            'ICF to Enrollment %', 'SF or Lost After ICF %', 
             'Avg time from StS to Appt Sched.', 'Avg time from StS to ICF', 'Avg time from StS to Enrollment',
             'Qualified to StS %', 'Qualified to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %'
         ]
@@ -298,7 +298,11 @@ if not enhanced_site_metrics_df.empty:
         if display_cols_exist:
             final_display_df = ranked_sites_df[display_cols_exist]
             if not final_display_df.empty:
-                rename_map = { 'Pre-Screening Activities Count': 'PSA Count' }
+                rename_map = { 
+                    'Pre-Screening Activities Count': 'PSA Count',
+                    'SF or Lost After ICF Count': 'SF/Lost Post-ICF',
+                    'SF or Lost After ICF %': 'SF/Lost Post-ICF %'
+                }
                 final_display_df = final_display_df.rename(columns=rename_map)
                 
                 formatted_df = format_performance_df(final_display_df)
