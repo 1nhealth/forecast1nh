@@ -491,7 +491,6 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         enr_count = group_df[enr_ts_col].notna().sum()
         lost_count = group_df[lost_ts_col].notna().sum()
         
-        # --- FIX: New calculation logic for SF or Lost After ICF ---
         sf_or_lost_after_icf_mask = (group_df[icf_ts_col].notna()) & (
             ((group_df[sf_ts_col].notna()) & (group_df[sf_ts_col] > group_df[icf_ts_col])) |
             ((group_df[lost_ts_col].notna()) & (group_df[lost_ts_col] > group_df[icf_ts_col]))
