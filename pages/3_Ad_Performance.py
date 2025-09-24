@@ -25,25 +25,33 @@ if not st.session_state.get('data_processed_successfully', False):
 
 with st.expander("Adjust Ad Performance Scoring Weights"):
     st.markdown("Adjust the importance of different metrics in the overall ad channel score. Changes here do not affect the Site Performance page.")
-    c1, c2 = st.columns(2)
+    
+    c1, c2, c3 = st.columns(3)
     with c1:
         st.subheader("Conversion Weights")
         st.slider("Qualified to Enrollment %", 0, 100, key="w_ad_qual_to_enroll")
-        st.slider("Qualified to ICF %", 0, 100, key="w_ad_qual_to_icf")
         st.slider("ICF to Enrollment %", 0, 100, key="w_ad_icf_to_enroll")
+        st.slider("Qualified to ICF %", 0, 100, key="w_ad_qual_to_icf")
+        st.slider("StS to Appt %", 0, 100, key="w_ad_sts_to_appt")
     with c2:
-        st.subheader("Negative Outcome & Lag Weights")
+        st.subheader("Speed / Lag Weights")
+        st.markdown("_Lower is better for these metrics._")
+        st.slider("Average time to first site action", 0, 100, key="w_ad_avg_time_to_first_action")
+        st.slider("Avg time from StS to Appt Sched.", 0, 100, key="w_ad_lag_sts_appt")
+    with c3:
+        st.subheader("Negative Outcome Weights")
         st.markdown("_Lower is better for these metrics._")
         st.slider("Screen Fail % (from Qualified)", 0, 100, key="w_ad_generic_sf")
-        st.slider("Projection Lag (Days)", 0, 100, key="w_ad_proj_lag")
     
     if st.button("Apply & Recalculate Score", type="primary", use_container_width=True, key="apply_ad_weights"):
         weights = {
             "Qualified to Enrollment %": st.session_state.w_ad_qual_to_enroll,
             "ICF to Enrollment %": st.session_state.w_ad_icf_to_enroll,
             "Qualified to ICF %": st.session_state.w_ad_qual_to_icf,
+            "StS to Appt %": st.session_state.w_ad_sts_to_appt,
+            "Average time to first site action": st.session_state.w_ad_avg_time_to_first_action,
+            "Avg time from StS to Appt Sched.": st.session_state.w_ad_lag_sts_appt,
             "Screen Fail % (from Qualified)": st.session_state.w_ad_generic_sf,
-            "Projection Lag (Days)": st.session_state.w_ad_proj_lag,
         }
         total_weight = sum(abs(w) for w in weights.values())
         weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
@@ -64,10 +72,15 @@ with st.expander("Adjust Ad Performance Scoring Weights"):
 with st.container(border=True):
     st.subheader("Performance by UTM Source")
     if not st.session_state.ranked_ad_source_df.empty:
-        display_cols_ad = ['UTM Source', 'Score', 'Grade', 'Total Qualified', 'ICF Count', 'Enrollment Count', 'Screen Fail Count', 'Qualified to ICF %', 'Qualified to Enrollment %', 'ICF to Enrollment %', 'Screen Fail % (from Qualified)', 'Projection Lag (Days)']
-        display_cols_exist = [col for col in display_cols_ad if col in st.session_state.ranked_ad_source_df.columns]
+        df_to_display = st.session_state.ranked_ad_source_df
+        display_cols_ad = [
+            'UTM Source', 'Score', 'Grade', 'Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count',
+            'Qualified to StS %', 'StS to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %', 'ICF to Enrollment %',
+            'Average time to first site action', 'Avg time from StS to Appt Sched.', 'Screen Fail % (from Qualified)'
+        ]
+        display_cols_exist = [col for col in display_cols_ad if col in df_to_display.columns]
         
-        final_ad_display = st.session_state.ranked_ad_source_df[display_cols_exist]
+        final_ad_display = df_to_display[display_cols_exist]
         formatted_df = format_performance_df(final_ad_display)
         st.dataframe(formatted_df, hide_index=True, use_container_width=True)
     else:
@@ -86,7 +99,11 @@ if "UTM Medium" in st.session_state.referral_data_processed.columns:
                 ranked_utm_combo_df['UTM Source'] = split_cols[0]
                 ranked_utm_combo_df['UTM Medium'] = split_cols[1]
 
-            display_cols_combo = ['UTM Source', 'UTM Medium', 'Score', 'Grade', 'Total Qualified', 'ICF Count', 'Enrollment Count', 'Screen Fail Count', 'Qualified to ICF %', 'Qualified to Enrollment %', 'ICF to Enrollment %', 'Screen Fail % (from Qualified)', 'Projection Lag (Days)']
+            display_cols_combo = [
+                'UTM Source', 'UTM Medium', 'Score', 'Grade', 'Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count',
+                'Qualified to StS %', 'StS to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %', 'ICF to Enrollment %',
+                'Average time to first site action', 'Avg time from StS to Appt Sched.', 'Screen Fail % (from Qualified)'
+            ]
             display_cols_combo_exist = [col for col in display_cols_combo if col in ranked_utm_combo_df.columns]
             
             final_combo_display = ranked_utm_combo_df[display_cols_combo_exist]
