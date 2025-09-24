@@ -13,22 +13,18 @@ def score_performance_groups(_performance_metrics_df, weights, group_col_name):
         st.error(f"Scoring Error: Grouping column '{group_col_name}' not found.")
         return df
 
-    # --- THIS IS THE CRITICAL CHANGE ---
-    # The original metrics DataFrame is what we return. The score is ADDED to it.
-    # We do not create a new, smaller DataFrame.
     df_with_scores = df.copy()
-
-    # Drop duplicates to prevent errors with indexing
     df_with_scores.drop_duplicates(subset=[group_col_name], keep='first', inplace=True)
     df_with_scores.set_index(group_col_name, inplace=True)
     
     metrics_to_scale = list(weights.keys())
-    lower_is_better = [m for m in metrics_to_scale if 'Lag' in m or 'TTC' in m or 'Fail' in m]
     
-    # Create a separate DataFrame for scaling to avoid modifying original data
+    # --- THIS IS THE CORRECTED, MORE ROBUST KEYWORD LIST ---
+    lower_is_better_keywords = ['Lag', 'TTC', 'Fail', 'Lost', 'Time', 'Awaiting', 'time from']
+    lower_is_better = [m for m in metrics_to_scale if any(keyword in m for keyword in lower_is_better_keywords)]
+    
     scaled_data = df_with_scores.reindex(columns=metrics_to_scale).copy()
 
-    # Handle NaNs before scaling
     for col in metrics_to_scale:
         if col in scaled_data.columns:
             if col in lower_is_better:
@@ -39,22 +35,18 @@ def score_performance_groups(_performance_metrics_df, weights, group_col_name):
         else:
              scaled_data[col] = 0.5
 
-    # Scale metrics from 0 to 1
     if not scaled_data.empty:
         scaler = MinMaxScaler()
         for col in scaled_data.columns:
             if scaled_data[col].min() == scaled_data[col].max():
                 scaled_data[col] = 0.5
             else:
-                # Use .values.reshape(-1, 1) for safety
                 scaled_data[col] = scaler.fit_transform(scaled_data[[col]].values.reshape(-1, 1))
 
-    # Invert scores for "lower is better" metrics
     for col in lower_is_better:
         if col in scaled_data.columns:
             scaled_data[col] = 1 - scaled_data[col]
             
-    # Calculate weighted score and add it to our main DataFrame
     df_with_scores['Score_Raw'] = 0.0
     total_weight = sum(abs(w) for w in weights.values())
     if total_weight > 0:
@@ -67,7 +59,6 @@ def score_performance_groups(_performance_metrics_df, weights, group_col_name):
 
     df_with_scores['Score'].fillna(0.0, inplace=True)
     
-    # Assign grades
     def assign_grade(score):
         if pd.isna(score): return 'N/A'
         if score >= 90: return 'A'
