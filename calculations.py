@@ -192,9 +192,6 @@ def calculate_site_metrics(_processed_df, ordered_stages, ts_col_map):
     )
 
 def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected_site="Overall"):
-    """
-    Calculates operational KPIs for sites based on activity after the 'Sent To Site' stage.
-    """
     if df is None or df.empty:
         return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
 
@@ -255,9 +252,6 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
     }
 
 def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
-    """
-    Analyzes how a site's time to first action impacts downstream conversion rates.
-    """
     if df is None or df.empty:
         return pd.DataFrame()
 
@@ -323,11 +317,6 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     return result
 
 def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall"):
-    """
-    Analyzes how the number of SITE contact attempts (post-StS) impacts downstream conversions.
-    Attempts are counted until an Appointment is Scheduled or the lead is marked as Lost.
-    A scheduled appointment with 0 prior attempts is counted as 1 successful attempt.
-    """
     if df is None or df.empty or not ts_col_map or status_history_col not in df.columns:
         return pd.DataFrame()
 
@@ -402,11 +391,6 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
     return result
 
 def calculate_site_performance_over_time(df, ts_col_map, status_history_col, selected_site="Overall"):
-    """
-    Calculates key site performance metrics over time on a weekly basis,
-    with transit-time adjustment and trend projection for conversion percentages.
-    The weekly cohorts are based on the 'Sent To Site' timestamp.
-    """
     if df is None or df.empty:
         return pd.DataFrame()
 
@@ -477,7 +461,7 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
 
     return weekly_summary
 
-# --- NEW ENHANCED SITE METRICS FUNCTION ---
+# --- UPDATED ENHANCED SITE METRICS FUNCTION ---
 @st.cache_data
 def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, status_history_col):
     if _processed_df is None or 'Site' not in _processed_df.columns:
@@ -487,7 +471,6 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
     df = _processed_df.copy()
     df['Site'] = df['Site'].astype(str).str.strip().replace('', 'Unassigned Site').fillna('Unassigned Site')
 
-    # Get all timestamp columns for convenience
     pof_ts_col = ts_col_map.get(STAGE_PASSED_ONLINE_FORM)
     psa_ts_col = ts_col_map.get(STAGE_PRE_SCREENING_ACTIVITIES)
     sts_ts_col = ts_col_map.get(STAGE_SENT_TO_SITE)
@@ -496,23 +479,23 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
     enr_ts_col = ts_col_map.get(STAGE_ENROLLED)
     lost_ts_col = ts_col_map.get(STAGE_LOST)
 
-    all_ts_cols_after_sts = [ts_col_map.get(s) for s in ordered_stages if ts_col_map.get(s) and ts_col_map.get(s) != sts_ts_col]
+    all_ts_cols_after_sts = [ts_col_map.get(s) for s in ordered_stages if ts_col_map.get(s) and ts_col_map.get(s) not in [pof_ts_col, psa_ts_col, sts_ts_col]]
     all_ts_cols_after_sts = [c for c in all_ts_cols_after_sts if c in df.columns]
 
     metrics_list = []
     for site_name, group_df in df.groupby('Site'):
         metrics = {'Site': site_name}
         
-        # --- Volume Counts ---
-        pof_count = group_df[pof_ts_col].notna().sum() if pof_ts_col else 0
-        psa_count = group_df[psa_ts_col].notna().sum() if psa_ts_col else 0
-        sts_count = group_df[sts_ts_col].notna().sum() if sts_ts_col else 0
-        appt_count = group_df[appt_ts_col].notna().sum() if appt_ts_col else 0
-        icf_count = group_df[icf_ts_col].notna().sum() if icf_ts_col else 0
-        enr_count = group_df[enr_ts_col].notna().sum() if enr_ts_col else 0
-        lost_count = group_df[lost_ts_col].notna().sum() if lost_ts_col else 0
+        pof_count = group_df[pof_ts_col].notna().sum()
+        psa_count = group_df[psa_ts_col].notna().sum()
+        sts_count = group_df[sts_ts_col].notna().sum()
+        appt_count = group_df[appt_ts_col].notna().sum()
+        icf_count = group_df[icf_ts_col].notna().sum()
+        enr_count = group_df[enr_ts_col].notna().sum()
+        lost_count = group_df[lost_ts_col].notna().sum()
         lost_after_icf_count = len(group_df[(group_df[icf_ts_col].notna()) & (group_df[lost_ts_col] > group_df[icf_ts_col])])
-        
+        lost_after_sts_count = len(group_df[(group_df[sts_ts_col].notna()) & (group_df[lost_ts_col] > group_df[sts_ts_col])])
+
         metrics['Total Qualified'] = pof_count
         metrics['Pre-Screening Activities Count'] = psa_count
         metrics['StS Count'] = sts_count
@@ -520,18 +503,31 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         metrics['ICF Count'] = icf_count
         metrics['Enrollment Count'] = enr_count
         metrics['Lost After ICF Count'] = lost_after_icf_count
+        metrics['Lost After StS'] = lost_after_sts_count
         metrics['Total Lost Count'] = lost_count
 
-        # --- Operational Metrics ---
         if sts_count > 0:
-            sts_df = group_df.dropna(subset=[sts_ts_col])
+            sts_df = group_df.dropna(subset=[sts_ts_col]).copy()
             
-            # Awaiting First Site Action
-            sts_df['has_later_action'] = sts_df[all_ts_cols_after_sts].notna().any(axis=1)
-            awaiting_action_count = len(sts_df[~sts_df['has_later_action']])
+            # --- CHANGE 1: Awaiting First Action Logic ---
+            def has_post_sts_action(row):
+                sts_time = row[sts_ts_col]
+                # Check for any later timestamp
+                for ts_col in all_ts_cols_after_sts:
+                    if pd.notna(row[ts_col]) and row[ts_col] > sts_time:
+                        return True
+                # Check for any later event in history
+                history = row.get(status_history_col, [])
+                if isinstance(history, list):
+                    for _, event_dt in history:
+                        if event_dt > sts_time:
+                            return True
+                return False
+
+            sts_df['has_action'] = sts_df.apply(has_post_sts_action, axis=1)
+            awaiting_action_count = len(sts_df[~sts_df['has_action']])
             metrics['Total Referrals Awaiting First Site Action'] = awaiting_action_count
             
-            # Contact Rate & Attempts
             ops_kpis = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name)
             metrics['Avg. Time Between Site Contacts'] = ops_kpis.get('avg_time_between_site_contacts')
             
@@ -539,10 +535,8 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
             total_attempts = (contact_attempts_df['Number of Site Attempts'] * contact_attempts_df['Total Referrals']).sum()
             metrics['Avg number of site contact attempts per referral'] = total_attempts / sts_count if sts_count > 0 else 0.0
             
-            referrals_with_action = sts_count - awaiting_action_count
-            metrics['StS Contact Rate %'] = referrals_with_action / sts_count if sts_count > 0 else 0.0
+            metrics['StS Contact Rate %'] = (sts_count - awaiting_action_count) / sts_count if sts_count > 0 else 0.0
         
-        # --- Conversion Rates ---
         metrics['Qualified to StS %'] = sts_count / pof_count if pof_count > 0 else 0.0
         metrics['Qualified to Appt %'] = appt_count / pof_count if pof_count > 0 else 0.0
         metrics['Qualified to ICF %'] = icf_count / pof_count if pof_count > 0 else 0.0
@@ -551,12 +545,12 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         metrics['StS to Appt %'] = appt_count / sts_count if sts_count > 0 else 0.0
         metrics['StS to ICF %'] = icf_count / sts_count if sts_count > 0 else 0.0
         metrics['StS to Enrollment %'] = enr_count / sts_count if sts_count > 0 else 0.0
-        metrics['StS to Lost %'] = lost_count / sts_count if sts_count > 0 else 0.0
+        # --- CHANGE 2: Use new lost count for this metric ---
+        metrics['StS to Lost %'] = lost_after_sts_count / sts_count if sts_count > 0 else 0.0
         
         metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
         metrics['ICF to Lost %'] = lost_after_icf_count / icf_count if icf_count > 0 else 0.0
         
-        # --- Lag Times ---
         metrics['Avg time from StS to Appt Sched.'] = calculate_avg_lag_generic(group_df, sts_ts_col, appt_ts_col)
         metrics['Avg time from StS to ICF'] = calculate_avg_lag_generic(group_df, sts_ts_col, icf_ts_col)
         metrics['Avg time from StS to Enrollment'] = calculate_avg_lag_generic(group_df, sts_ts_col, enr_ts_col)
