@@ -322,3 +322,88 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     result.rename(columns={'ttfc_bin': 'Time to First Site Action'}, inplace=True)
     
     return result
+
+# --- NEW FUNCTION ---
+def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall"):
+    """
+    Analyzes how the number of SITE contact attempts (post-StS) impacts downstream conversions.
+    Attempts are counted until an Appointment is Scheduled or the lead is marked as Lost.
+    """
+    if df is None or df.empty or not ts_col_map or status_history_col not in df.columns:
+        return pd.DataFrame()
+
+    # 1. Filter by selected site
+    if selected_site != "Overall":
+        if 'Site' not in df.columns: return pd.DataFrame()
+        analysis_df = df[df['Site'] == selected_site].copy()
+    else:
+        analysis_df = df.copy()
+
+    # 2. Define key timestamps
+    sts_ts_col = ts_col_map.get("Sent To Site")
+    appt_ts_col = ts_col_map.get("Appointment Scheduled")
+    lost_ts_col = ts_col_map.get("Lost")
+    icf_ts_col = ts_col_map.get("Signed ICF")
+    enr_ts_col = ts_col_map.get("Enrolled")
+
+    # Ensure all required timestamp columns exist, even if as NaT
+    for col in [sts_ts_col, appt_ts_col, lost_ts_col, icf_ts_col, enr_ts_col]:
+        if col and col not in analysis_df.columns:
+            analysis_df[col] = pd.NaT
+
+    # 3. Filter to only referrals that have been sent to a site
+    analysis_df = analysis_df.dropna(subset=[sts_ts_col]).copy()
+    if analysis_df.empty:
+        return pd.DataFrame()
+
+    # 4. Helper function to count attempts within the defined window
+    def count_site_attempts(row):
+        sts_time = row[sts_ts_col]
+        appt_time = row.get(appt_ts_col)
+        lost_time = row.get(lost_ts_col)
+        history = row[status_history_col]
+
+        if not isinstance(history, list):
+            return 0
+
+        # Determine the end of the counting window
+        end_window = pd.Timestamp.max
+        if pd.notna(appt_time) and pd.notna(lost_time):
+            end_window = min(appt_time, lost_time)
+        elif pd.notna(appt_time):
+            end_window = appt_time
+        elif pd.notna(lost_time):
+            end_window = lost_time
+
+        # Count contact attempts within the window (StS -> end_window)
+        attempt_count = 0
+        for event_name, event_dt in history:
+            if "contact attempt" in event_name.lower():
+                if sts_time < event_dt < end_window:
+                    attempt_count += 1
+        
+        return attempt_count
+
+    # 5. Apply the function and aggregate
+    analysis_df['site_attempt_count'] = analysis_df.apply(count_site_attempts, axis=1)
+
+    result = analysis_df.groupby('site_attempt_count').agg(
+        Referral_Count=('site_attempt_count', 'size'),
+        Total_Appts=(appt_ts_col, lambda x: x.notna().sum()),
+        Total_ICF=(icf_ts_col, lambda x: x.notna().sum()),
+        Total_Enrolled=(enr_ts_col, lambda x: x.notna().sum())
+    )
+
+    # 6. Calculate rates and finalize
+    result['Appt_Rate'] = (result['Total_Appts'] / result['Referral_Count'].replace(0, np.nan))
+    result['ICF_Rate'] = (result['Total_ICF'] / result['Referral_Count'].replace(0, np.nan))
+    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Referral_Count'].replace(0, np.nan))
+    
+    result.reset_index(inplace=True)
+    
+    result.rename(columns={
+        'site_attempt_count': 'Number of Site Attempts',
+        'Referral_Count': 'Total Referrals'
+    }, inplace=True)
+    
+    return result
