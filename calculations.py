@@ -19,7 +19,9 @@ def calculate_avg_lag_generic(df, col_from, col_to):
     valid_df = df.dropna(subset=[col_from, col_to])
     if valid_df.empty: return np.nan
 
-    diff = pd.to_datetime(valid_df[col_to]) - pd.to_datetime(valid_df[col_to])
+    # --- THIS IS THE CORRECTED LINE ---
+    diff = pd.to_datetime(valid_df[col_to]) - pd.to_datetime(valid_df[col_from])
+    
     diff_positive = diff[diff >= pd.Timedelta(days=0)]
 
     return diff_positive.mean().total_seconds() / (60 * 60 * 24) if not diff_positive.empty else np.nan
@@ -402,7 +404,6 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
     
     return result
 
-# --- UPDATED FUNCTION ---
 def calculate_site_performance_over_time(df, ts_col_map, status_history_col, selected_site="Overall"):
     """
     Calculates key site performance metrics over time on a weekly basis,
@@ -456,29 +457,21 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
 
     weekly_summary = time_df.resample('W').apply(get_weekly_metrics)
 
-    # --- NEW: Logic for Hybrid Actual + Projected Chart ---
     for rate_col in ['Sent to Site -> Appointment %', 'Sent to Site -> ICF %', 'Sent to Site -> Enrollment %']:
         actual_col_name = f"{rate_col} (Actual)"
         projected_col_name = f"{rate_col} (Projected)"
         
-        # Create the actuals column
         weekly_summary[actual_col_name] = weekly_summary[rate_col] * 100
         
-        # Calculate a 4-week rolling average on the actual (mature) data
         rolling_avg = weekly_summary[actual_col_name].rolling(window=4, min_periods=1).mean()
         
-        # Find the last valid point in the actuals and its corresponding rolling average
         last_valid_index = weekly_summary[actual_col_name].last_valid_index()
         if last_valid_index is not None:
             last_value = rolling_avg.loc[last_valid_index]
             
-            # Create the projection series
             projected_series = pd.Series(np.nan, index=weekly_summary.index)
-            # The projection starts from the last valid point
             projected_series.loc[last_valid_index:] = last_value
-            # Fill forward to the end of the dataframe
             projected_series.ffill(inplace=True)
-            # Remove the value at the connection point to avoid plotting it twice
             projected_series.loc[last_valid_index] = np.nan
             
             weekly_summary[projected_col_name] = projected_series
