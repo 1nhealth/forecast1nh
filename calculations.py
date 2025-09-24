@@ -323,7 +323,6 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     
     return result
 
-# --- UPDATED FUNCTION ---
 def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall"):
     """
     Analyzes how the number of SITE contact attempts (post-StS) impacts downstream conversions.
@@ -402,3 +401,64 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
     }, inplace=True)
     
     return result
+
+# --- NEW FUNCTION ---
+def calculate_site_performance_over_time(df, ts_col_map, status_history_col, selected_site="Overall"):
+    """
+    Calculates key site performance metrics over time on a weekly basis,
+    with transit-time adjustment for conversion percentages. The weekly cohorts
+    are based on the 'Sent To Site' timestamp.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # Define key timestamp columns
+    sts_ts_col = ts_col_map.get(STAGE_SENT_TO_SITE)
+    appt_ts_col = ts_col_map.get(STAGE_APPOINTMENT_SCHEDULED)
+    icf_ts_col = ts_col_map.get(STAGE_SIGNED_ICF)
+    enr_ts_col = ts_col_map.get(STAGE_ENROLLED)
+
+    if not all(col in df.columns for col in [sts_ts_col, appt_ts_col, icf_ts_col, enr_ts_col]):
+        return pd.DataFrame()
+
+    # Filter by selected site
+    if selected_site != "Overall":
+        if 'Site' not in df.columns: return pd.DataFrame()
+        site_df = df[df['Site'] == selected_site].copy()
+    else:
+        site_df = df.copy()
+
+    site_df.dropna(subset=[sts_ts_col], inplace=True)
+    if site_df.empty:
+        return pd.DataFrame()
+
+    avg_sts_to_enr_lag = calculate_avg_lag_generic(site_df, sts_ts_col, enr_ts_col)
+    maturity_days = (avg_sts_to_enr_lag * 1.5) if pd.notna(avg_sts_to_enr_lag) else 60
+
+    time_df = site_df.set_index(sts_ts_col)
+
+    # Use a helper function for calculating weekly metrics to avoid repetition
+    def get_weekly_metrics(week_df):
+        mature_df = week_df[week_df.index + pd.Timedelta(days=maturity_days) < pd.Timestamp.now()]
+        
+        # Calculate operational KPIs for the weekly cohort
+        kpis = calculate_site_operational_kpis(week_df.reset_index(), ts_col_map, status_history_col, "Overall")
+
+        return pd.Series({
+            'Total Sent to Site per Week': len(week_df),
+            'Sent to Site -> Appointment %': (mature_df[appt_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0),
+            'Sent to Site -> ICF %': (mature_df[icf_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0),
+            'Sent to Site -> Enrollment %': (mature_df[enr_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0),
+            'Total Appointments per Week': week_df[appt_ts_col].notna().sum(),
+            'Average Time to First Site Action (Days)': kpis['avg_sts_to_first_action']
+        })
+
+    weekly_summary = time_df.resample('W').apply(get_weekly_metrics)
+
+    # Convert percentages
+    for col in ['Sent to Site -> Appointment %', 'Sent to Site -> ICF %', 'Sent to Site -> Enrollment %']:
+        weekly_summary[col] *= 100
+
+    weekly_summary.fillna(method='ffill', inplace=True)
+
+    return weekly_summary
