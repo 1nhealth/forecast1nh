@@ -33,6 +33,7 @@ required_keys = [
     'w_site_sts_to_icf', 'w_site_sts_to_enr', 'w_site_sts_to_lost',
     'w_site_icf_to_lost', 'w_site_lag_sts_appt', 'w_site_lag_sts_icf',
     'w_site_lag_sts_enr', 'w_site_qual_to_sts', 'w_site_qual_to_appt',
+    'w_site_avg_time_to_first_action' # <-- NEW KEY
 ]
 default_values = {
     'data_processed_successfully': False,
@@ -49,6 +50,7 @@ default_values = {
     'w_site_sts_to_icf': 15, 'w_site_sts_to_enr': 20, 'w_site_sts_to_lost': 5,
     'w_site_icf_to_lost': 5, 'w_site_lag_sts_appt': 10, 'w_site_lag_sts_icf': 5,
     'w_site_lag_sts_enr': 0, 'w_site_qual_to_sts': 0, 'w_site_qual_to_appt': 0,
+    'w_site_avg_time_to_first_action': 10 # <-- NEW DEFAULT
 }
 for key in required_keys:
     if key not in st.session_state:

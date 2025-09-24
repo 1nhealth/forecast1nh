@@ -461,7 +461,6 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
 
     return weekly_summary
 
-# --- UPDATED ENHANCED SITE METRICS FUNCTION ---
 @st.cache_data
 def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, status_history_col):
     if _processed_df is None or 'Site' not in _processed_df.columns:
@@ -509,18 +508,15 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         if sts_count > 0:
             sts_df = group_df.dropna(subset=[sts_ts_col]).copy()
             
-            # --- CHANGE 1: Awaiting First Action Logic ---
             def has_post_sts_action(row):
                 sts_time = row[sts_ts_col]
-                # Check for any later timestamp
                 for ts_col in all_ts_cols_after_sts:
                     if pd.notna(row[ts_col]) and row[ts_col] > sts_time:
                         return True
-                # Check for any later event in history
                 history = row.get(status_history_col, [])
                 if isinstance(history, list):
                     for _, event_dt in history:
-                        if event_dt > sts_time:
+                        if pd.notna(event_dt) and event_dt > sts_time:
                             return True
                 return False
 
@@ -530,6 +526,8 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
             
             ops_kpis = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name)
             metrics['Avg. Time Between Site Contacts'] = ops_kpis.get('avg_time_between_site_contacts')
+            # --- NEW METRIC ADDED ---
+            metrics['Average time to first site action'] = ops_kpis.get('avg_sts_to_first_action')
             
             contact_attempts_df = calculate_site_contact_attempt_effectiveness(group_df, ts_col_map, status_history_col, site_name)
             total_attempts = (contact_attempts_df['Number of Site Attempts'] * contact_attempts_df['Total Referrals']).sum()
@@ -545,7 +543,6 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         metrics['StS to Appt %'] = appt_count / sts_count if sts_count > 0 else 0.0
         metrics['StS to ICF %'] = icf_count / sts_count if sts_count > 0 else 0.0
         metrics['StS to Enrollment %'] = enr_count / sts_count if sts_count > 0 else 0.0
-        # --- CHANGE 2: Use new lost count for this metric ---
         metrics['StS to Lost %'] = lost_after_sts_count / sts_count if sts_count > 0 else 0.0
         
         metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
