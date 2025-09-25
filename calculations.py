@@ -558,7 +558,6 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
         
     return pd.DataFrame(metrics_list)
 
-# --- NEW: Function for Ad Performance Metrics ---
 @st.cache_data
 def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, grouping_col, unclassified_label):
     if _processed_df is None or grouping_col not in _processed_df.columns:
@@ -592,7 +591,6 @@ def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, gro
         metrics['Enrollment Count'] = enr_count
         metrics['Screen Fail Count'] = sf_count
         
-        # --- Conversion Rates ---
         metrics['Qualified to StS %'] = sts_count / pof_count if pof_count > 0 else 0.0
         metrics['StS to Appt %'] = appt_count / sts_count if sts_count > 0 else 0.0
         metrics['Qualified to ICF %'] = icf_count / pof_count if pof_count > 0 else 0.0
@@ -600,8 +598,6 @@ def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, gro
         metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
         metrics['Screen Fail % (from Qualified)'] = sf_count / pof_count if pof_count > 0 else 0.0
 
-        # --- Lag Times ---
-        # Note: 'site_operational_kpis' is site-specific, so we calculate the average lag directly for the ad group
         all_ts_cols_after_sts = [ts_col_map.get(s) for s in ordered_stages if ts_col_map.get(s) and ts_col_map.get(s) != sts_ts_col]
         all_ts_cols_after_sts = [c for c in all_ts_cols_after_sts if c in group_df.columns]
         
@@ -618,3 +614,47 @@ def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, gro
         metrics_list.append(metrics)
         
     return pd.DataFrame(metrics_list)
+
+# --- NEW FUNCTION FOR LOST REASONS ---
+@st.cache_data
+def calculate_lost_reasons(df, ts_col_map, status_history_col, funnel_def, selected_site="Overall"):
+    """
+    Analyzes the final status for referrals that reached the 'Lost' stage.
+    """
+    if df is None or df.empty or not funnel_def:
+        return pd.Series(dtype='int64')
+
+    lost_ts_col = ts_col_map.get(STAGE_LOST)
+    if not lost_ts_col or lost_ts_col not in df.columns or status_history_col not in df.columns:
+        return pd.Series(dtype='int64')
+
+    # Filter by site
+    if selected_site != "Overall":
+        if 'Site' not in df.columns: return pd.Series(dtype='int64')
+        analysis_df = df[df['Site'] == selected_site].copy()
+    else:
+        analysis_df = df.copy()
+
+    # Get only lost referrals
+    lost_df = analysis_df.dropna(subset=[lost_ts_col]).copy()
+    if lost_df.empty:
+        return pd.Series(dtype='int64')
+
+    # Get the list of official statuses that belong to the 'Lost' stage
+    valid_lost_statuses = funnel_def.get(STAGE_LOST, [])
+    
+    def get_final_lost_status(row):
+        history = row[status_history_col]
+        if not isinstance(history, list) or not history:
+            return "Lost - Unspecified"
+        
+        # Iterate backwards through the history to find the most recent status
+        for event_name, event_dt in reversed(history):
+            if event_name in valid_lost_statuses:
+                return event_name
+        
+        return "Lost - Unspecified"
+
+    lost_df['Lost Reason'] = lost_df.apply(get_final_lost_status, axis=1)
+    
+    return lost_df['Lost Reason'].value_counts()
