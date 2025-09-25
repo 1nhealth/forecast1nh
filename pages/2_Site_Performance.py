@@ -59,38 +59,44 @@ with st.container(border=True):
         selected_site
     )
 
-    # --- KPI and Pie Chart Display ---
-    kpi_col, chart_col = st.columns([1, 1])
+    # --- CHANGE: KPIs are now in their own row ---
+    kpi_cols = st.columns(3)
+    kpi_cols[0].metric(
+        label="Avg. Time to First Site Action",
+        value=format_days_to_dhm(site_kpis.get('avg_sts_to_first_action')),
+        help="Time from when a lead is 'Sent To Site' until the site takes any follow-up action (e.g., status change, appointment scheduled)."
+    )
+    kpi_cols[1].metric(
+        label="Avg. Time Between Site Contacts",
+        value=format_days_to_dhm(site_kpis.get('avg_time_between_site_contacts')),
+        help="The average time between explicit 'Contact Attempts' made by a site before an appointment is scheduled."
+    )
+    kpi_cols[2].metric(
+        label="Avg. Time StS to Appt. Sched.",
+        value=format_days_to_dhm(site_kpis.get('avg_sts_to_appt')),
+        help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
+    )
 
-    with kpi_col:
-        st.metric(
-            label="Avg. Time to First Site Action",
-            value=format_days_to_dhm(site_kpis.get('avg_sts_to_first_action')),
-            help="Time from when a lead is 'Sent To Site' until the site takes any follow-up action (e.g., status change, appointment scheduled)."
+    # --- CHANGE: Pie chart is now in its own row ---
+    st.subheader(f"Lost Reasons for {selected_site}")
+    if not lost_reasons.empty:
+        fig = px.pie(
+            values=lost_reasons.values, 
+            names=lost_reasons.index,
+            title=f"Breakdown of {lost_reasons.sum()} Lost Referrals"
         )
-        st.metric(
-            label="Avg. Time Between Site Contacts",
-            value=format_days_to_dhm(site_kpis.get('avg_time_between_site_contacts')),
-            help="The average time between explicit 'Contact Attempts' made by a site before an appointment is scheduled."
-        )
-        st.metric(
-            label="Avg. Time StS to Appt. Sched.",
-            value=format_days_to_dhm(site_kpis.get('avg_sts_to_appt')),
-            help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
-        )
+        fig.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info(f"No referrals were marked as 'Lost' for {selected_site}.")
 
-    with chart_col:
-        st.subheader(f"Lost Reasons for {selected_site}")
-        if not lost_reasons.empty:
-            fig = px.pie(
-                values=lost_reasons.values, 
-                names=lost_reasons.index,
-                title=f"Breakdown of {lost_reasons.sum()} Lost Referrals"
-            )
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info(f"No referrals were marked as 'Lost' for {selected_site}.")
+    st.divider()
+    st.subheader(f"Time to First Action Effectiveness: {selected_site}")
+    
+    site_effectiveness_df = calculate_site_ttfc_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, selected_site)
+    if site_effectiveness_df.empty or site_effectiveness_df['Attempts'].sum() == 0:
+        st.info(f"Not enough data for '{selected_site}' to analyze first action effectiveness.")
+    else:
 
 
     st.divider()
