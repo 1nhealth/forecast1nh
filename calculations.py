@@ -615,32 +615,30 @@ def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, gro
         
     return pd.DataFrame(metrics_list)
 
-# --- NEW FUNCTION FOR LOST REASONS ---
+# --- NEW FUNCTION ---
 @st.cache_data
-def calculate_lost_reasons(df, ts_col_map, status_history_col, funnel_def, selected_site="Overall"):
-    """
-    Analyzes the final status for referrals that reached the 'Lost' stage.
-    """
+def calculate_lost_reasons_after_sts(df, ts_col_map, status_history_col, funnel_def, selected_site="Overall"):
     if df is None or df.empty or not funnel_def:
         return pd.Series(dtype='int64')
 
     lost_ts_col = ts_col_map.get(STAGE_LOST)
-    if not lost_ts_col or lost_ts_col not in df.columns or status_history_col not in df.columns:
+    sts_ts_col = ts_col_map.get(STAGE_SENT_TO_SITE)
+    if not all(col in df.columns for col in [lost_ts_col, sts_ts_col, status_history_col]):
         return pd.Series(dtype='int64')
 
-    # Filter by site
     if selected_site != "Overall":
         if 'Site' not in df.columns: return pd.Series(dtype='int64')
         analysis_df = df[df['Site'] == selected_site].copy()
     else:
         analysis_df = df.copy()
 
-    # Get only lost referrals
-    lost_df = analysis_df.dropna(subset=[lost_ts_col]).copy()
+    # --- CHANGE: Filter for referrals that were Lost AFTER being Sent to Site ---
+    lost_df = analysis_df.dropna(subset=[lost_ts_col, sts_ts_col])
+    lost_df = lost_df[lost_df[lost_ts_col] > lost_df[sts_ts_col]].copy()
+    
     if lost_df.empty:
         return pd.Series(dtype='int64')
 
-    # Get the list of official statuses that belong to the 'Lost' stage
     valid_lost_statuses = funnel_def.get(STAGE_LOST, [])
     
     def get_final_lost_status(row):
@@ -648,7 +646,6 @@ def calculate_lost_reasons(df, ts_col_map, status_history_col, funnel_def, selec
         if not isinstance(history, list) or not history:
             return "Lost - Unspecified"
         
-        # Iterate backwards through the history to find the most recent status
         for event_name, event_dt in reversed(history):
             if event_name in valid_lost_statuses:
                 return event_name
