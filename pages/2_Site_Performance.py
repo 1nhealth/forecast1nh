@@ -9,7 +9,7 @@ from calculations import (
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
     calculate_enhanced_site_metrics,
-    calculate_lost_reasons_after_sts # Import the new specific function
+    calculate_lost_reasons_after_sts
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -125,10 +125,16 @@ with st.container(border=True):
     chart_col1, _ = st.columns([2, 1]) 
     with chart_col1:
         if not lost_reasons.empty:
+            # --- THIS IS THE MODIFIED SECTION ---
+            brand_color_sequence = [
+                '#53CA97', '#7991C6', '#F4A261', '#E76F51', 
+                '#2A9D8F', '#E9C46A', '#A2D2FF', '#FFB703'
+            ]
             fig = px.pie(
                 values=lost_reasons.values, 
                 names=lost_reasons.index,
-                title=f"Breakdown of {lost_reasons.sum()} Lost Referrals"
+                title=f"Breakdown of {lost_reasons.sum()} Lost Referrals",
+                color_discrete_sequence=brand_color_sequence # Applied brand colors here
             )
             fig.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig, use_container_width=True)
