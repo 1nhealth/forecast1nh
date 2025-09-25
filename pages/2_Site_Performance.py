@@ -8,14 +8,15 @@ from calculations import (
     calculate_site_ttfc_effectiveness, 
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
-    calculate_enhanced_site_metrics
+    calculate_enhanced_site_metrics,
+    calculate_lost_reasons # Import the new function
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import plotly.express as px # Import plotly express for pie chart
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
-# --- Initialize session state for the ranked table ---
 if 'ranked_sites_df' not in st.session_state:
     st.session_state.ranked_sites_df = pd.DataFrame()
 
@@ -43,35 +44,54 @@ with st.container(border=True):
         key="site_kpi_selector"
     )
 
+    # --- Calculations for this section ---
     site_kpis = calculate_site_operational_kpis(
         st.session_state.referral_data_processed,
         st.session_state.ts_col_map,
         "Parsed_Lead_Status_History",
         selected_site
     )
+    lost_reasons = calculate_lost_reasons(
+        st.session_state.referral_data_processed,
+        st.session_state.ts_col_map,
+        "Parsed_Lead_Status_History",
+        st.session_state.funnel_definition,
+        selected_site
+    )
 
-    kpi_cols = st.columns(3)
-    with kpi_cols[0]:
-        value = site_kpis.get('avg_sts_to_first_action')
+    # --- KPI and Pie Chart Display ---
+    kpi_col, chart_col = st.columns([1, 1])
+
+    with kpi_col:
         st.metric(
             label="Avg. Time to First Site Action",
-            value=format_days_to_dhm(value),
+            value=format_days_to_dhm(site_kpis.get('avg_sts_to_first_action')),
             help="Time from when a lead is 'Sent To Site' until the site takes any follow-up action (e.g., status change, appointment scheduled)."
         )
-    with kpi_cols[1]:
-        value = site_kpis.get('avg_time_between_site_contacts')
         st.metric(
             label="Avg. Time Between Site Contacts",
-            value=format_days_to_dhm(value),
+            value=format_days_to_dhm(site_kpis.get('avg_time_between_site_contacts')),
             help="The average time between explicit 'Contact Attempts' made by a site before an appointment is scheduled."
         )
-    with kpi_cols[2]:
-        value = site_kpis.get('avg_sts_to_appt')
         st.metric(
             label="Avg. Time StS to Appt. Sched.",
-            value=format_days_to_dhm(value),
+            value=format_days_to_dhm(site_kpis.get('avg_sts_to_appt')),
             help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
         )
+
+    with chart_col:
+        st.subheader(f"Lost Reasons for {selected_site}")
+        if not lost_reasons.empty:
+            fig = px.pie(
+                values=lost_reasons.values, 
+                names=lost_reasons.index,
+                title=f"Breakdown of {lost_reasons.sum()} Lost Referrals"
+            )
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No referrals were marked as 'Lost' for {selected_site}.")
+
 
     st.divider()
     st.subheader(f"Time to First Action Effectiveness: {selected_site}")
@@ -271,18 +291,12 @@ with st.expander("Adjust Site Performance Scoring Weights"):
         total_weight = sum(abs(w) for w in weights.values())
         weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
         
-        enhanced_site_metrics_df = calculate_enhanced_site_metrics(
-            st.session_state.referral_data_processed,
-            st.session_state.ordered_stages,
-            st.session_state.ts_col_map,
-            "Parsed_Lead_Status_History"
-        )
+        enhanced_site_metrics_df = calculate_enhanced_site_metrics(st.session_state.referral_data_processed, st.session_state.ordered_stages, st.session_state.ts_col_map, "Parsed_Lead_Status_History")
         if not enhanced_site_metrics_df.empty:
             st.session_state.ranked_sites_df = score_sites(enhanced_site_metrics_df, weights_normalized)
         else:
             st.session_state.ranked_sites_df = pd.DataFrame()
 
-# --- Display Logic ---
 with st.container(border=True):
     st.subheader("Site Performance Ranking")
     
