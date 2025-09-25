@@ -9,11 +9,11 @@ from calculations import (
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
     calculate_enhanced_site_metrics,
-    calculate_lost_reasons # Import the new function
+    calculate_lost_reasons
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-import plotly.express as px # Import plotly express for pie chart
+import plotly.express as px
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -29,7 +29,6 @@ if not st.session_state.get('data_processed_successfully', False):
     st.warning("Please upload and process your data on the 'Home & Data Setup' page first.")
     st.stop()
 
-# --- Site Operational KPIs & Effectiveness Section ---
 with st.container(border=True):
     st.subheader("Site Operational Analysis")
     st.markdown("Analyze site-level efficiency. Select a specific site or view the overall average for all metrics in this section.")
@@ -44,7 +43,6 @@ with st.container(border=True):
         key="site_kpi_selector"
     )
 
-    # --- Calculations for this section ---
     site_kpis = calculate_site_operational_kpis(
         st.session_state.referral_data_processed,
         st.session_state.ts_col_map,
@@ -59,7 +57,6 @@ with st.container(border=True):
         selected_site
     )
 
-    # --- CHANGE: KPIs are now in their own row ---
     kpi_cols = st.columns(3)
     kpi_cols[0].metric(
         label="Avg. Time to First Site Action",
@@ -77,7 +74,6 @@ with st.container(border=True):
         help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
     )
 
-    # --- CHANGE: Pie chart is now in its own row ---
     st.subheader(f"Lost Reasons for {selected_site}")
     if not lost_reasons.empty:
         fig = px.pie(
@@ -97,56 +93,26 @@ with st.container(border=True):
     if site_effectiveness_df.empty or site_effectiveness_df['Attempts'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze first action effectiveness.")
     else:
-
-
-    st.divider()
-    st.subheader(f"Time to First Action Effectiveness: {selected_site}")
-    
-    site_effectiveness_df = calculate_site_ttfc_effectiveness(
-        st.session_state.referral_data_processed,
-        st.session_state.ts_col_map,
-        selected_site
-    )
-
-    if site_effectiveness_df.empty or site_effectiveness_df['Attempts'].sum() == 0:
-        st.info(f"Not enough data for '{selected_site}' to analyze first action effectiveness.")
-    else:
         display_df = site_effectiveness_df.copy()
         display_df['Appt. Rate'] = display_df['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         
         display_df.rename(columns={
-            'Attempts': 'Total Referrals',
-            'Total_Appts': 'Total Appointments',
-            'Total_ICF': 'Total ICFs',
-            'Total_Enrolled': 'Total Enrollments'
+            'Attempts': 'Total Referrals', 'Total_Appts': 'Total Appointments',
+            'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'
         }, inplace=True)
         
         final_cols = [
-            'Time to First Site Action', 'Total Referrals',
-            'Total Appointments', 'Appt. Rate',
-            'Total ICFs', 'ICF Rate',
-            'Total Enrollments', 'Enrollment Rate'
+            'Time to First Site Action', 'Total Referrals', 'Total Appointments', 'Appt. Rate',
+            'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate'
         ]
-        
-        st.dataframe(
-            display_df[final_cols],
-            hide_index=True,
-            use_container_width=True
-        )
-
+        st.dataframe(display_df[final_cols], hide_index=True, use_container_width=True)
+    
     st.divider()
     st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
-    st.markdown("Analyzes how the number of site contact attempts (post-'Sent to Site') impacts downstream funnel conversions.")
-
-    site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(
-        st.session_state.referral_data_processed,
-        st.session_state.ts_col_map,
-        "Parsed_Lead_Status_History",
-        selected_site
-    )
-
+    
+    site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, "Parsed_Lead_Status_History", selected_site)
     if site_contact_effectiveness_df.empty or site_contact_effectiveness_df['Total Referrals'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze contact attempt effectiveness.")
     else:
@@ -156,38 +122,19 @@ with st.container(border=True):
         display_df_contact['Enrollment Rate'] = display_df_contact['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         
         display_df_contact.rename(columns={
-            'Total_Appts': 'Total Appointments',
-            'Total_ICF': 'Total ICFs',
-            'Total_Enrolled': 'Total Enrollments'
+            'Total_Appts': 'Total Appointments', 'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'
         }, inplace=True)
         
         final_cols_contact = [
-            'Number of Site Attempts', 'Total Referrals',
-            'Total Appointments', 'Appt. Rate',
-            'Total ICFs', 'ICF Rate',
-            'Total Enrollments', 'Enrollment Rate'
+            'Number of Site Attempts', 'Total Referrals', 'Total Appointments', 'Appt. Rate',
+            'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate'
         ]
-        
-        st.dataframe(
-            display_df_contact[final_cols_contact],
-            hide_index=True,
-            use_container_width=True
-        )
+        st.dataframe(display_df_contact[final_cols_contact], hide_index=True, use_container_width=True)
     
     st.divider()
     st.subheader(f"Performance Over Time (Weekly): {selected_site}")
-    st.markdown("""
-    Track key metrics on a weekly basis. For conversion rates, the solid line represents weeks with mature data, 
-    while the **dotted line projects the recent trend** forward for weeks that are not yet mature.
-    """)
-
-    over_time_df = calculate_site_performance_over_time(
-        st.session_state.referral_data_processed,
-        st.session_state.ts_col_map,
-        "Parsed_Lead_Status_History",
-        selected_site
-    )
-
+    
+    over_time_df = calculate_site_performance_over_time(st.session_state.referral_data_processed, st.session_state.ts_col_map, "Parsed_Lead_Status_History", selected_site)
     if over_time_df.empty:
         st.info(f"Not enough data for '{selected_site}' to generate a performance trend graph.")
     else:
@@ -218,23 +165,12 @@ with st.container(border=True):
 
             fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-            fig.add_trace(
-                go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name,
-                           mode='lines+markers', line=dict(color='#53CA97')),
-                secondary_y=False,
-            )
+            fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name, mode='lines+markers', line=dict(color='#53CA97')), secondary_y=False)
             if projected_col and projected_col in over_time_df.columns:
-                fig.add_trace(
-                    go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend",
-                               mode='lines', line=dict(color='#53CA97', dash='dot'), showlegend=False),
-                    secondary_y=False,
-                )
+                fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend", mode='lines', line=dict(color='#53CA97', dash='dot'), showlegend=False), secondary_y=False)
 
             if compare_with_volume and secondary_metric in over_time_df.columns:
-                fig.add_trace(
-                    go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')),
-                    secondary_y=True,
-                )
+                fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')), secondary_y=True)
 
             fig.update_yaxes(title_text=f"<b>{primary_metric_display_name}</b>", secondary_y=False)
             if compare_with_volume and secondary_metric in over_time_df.columns:
@@ -244,7 +180,6 @@ with st.container(border=True):
                 title_text=f"Weekly Trend for {selected_site}: {primary_metric_display_name}",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
-            
             st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
