@@ -9,7 +9,7 @@ from calculations import (
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
     calculate_enhanced_site_metrics,
-    calculate_lost_reasons
+    calculate_lost_reasons_after_sts # Import the new specific function
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -49,7 +49,7 @@ with st.container(border=True):
         "Parsed_Lead_Status_History",
         selected_site
     )
-    lost_reasons = calculate_lost_reasons(
+    lost_reasons = calculate_lost_reasons_after_sts(
         st.session_state.referral_data_processed,
         st.session_state.ts_col_map,
         "Parsed_Lead_Status_History",
@@ -73,19 +73,7 @@ with st.container(border=True):
         value=format_days_to_dhm(site_kpis.get('avg_sts_to_appt')),
         help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
     )
-
-    st.subheader(f"Lost Reasons for {selected_site}")
-    if not lost_reasons.empty:
-        fig = px.pie(
-            values=lost_reasons.values, 
-            names=lost_reasons.index,
-            title=f"Breakdown of {lost_reasons.sum()} Lost Referrals"
-        )
-        fig.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info(f"No referrals were marked as 'Lost' for {selected_site}.")
-
+    
     st.divider()
     st.subheader(f"Time to First Action Effectiveness: {selected_site}")
     
@@ -131,6 +119,22 @@ with st.container(border=True):
         ]
         st.dataframe(display_df_contact[final_cols_contact], hide_index=True, use_container_width=True)
     
+    st.divider()
+    st.subheader(f"Lost Reasons (After Sent to Site) for {selected_site}")
+    
+    chart_col1, _ = st.columns([2, 1]) 
+    with chart_col1:
+        if not lost_reasons.empty:
+            fig = px.pie(
+                values=lost_reasons.values, 
+                names=lost_reasons.index,
+                title=f"Breakdown of {lost_reasons.sum()} Lost Referrals"
+            )
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No referrals were marked as 'Lost' after being sent to {selected_site}.")
+
     st.divider()
     st.subheader(f"Performance Over Time (Weekly): {selected_site}")
     
