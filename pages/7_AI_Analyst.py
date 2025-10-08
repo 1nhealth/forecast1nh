@@ -43,11 +43,13 @@ try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
     
+    # --- THIS IS THE CORRECTED SECTION ---
     generation_config = genai.GenerationConfig(temperature=0.2)
     model = genai.GenerativeModel(
         'gemini-flash-latest',
         generation_config=generation_config
     )
+    # --- END OF CORRECTION ---
 
 except Exception as e:
     st.error("Error configuring the AI model. Have you set your GEMINI_API_KEY in Streamlit's secrets?")
@@ -96,25 +98,12 @@ Your primary tool is the ability to write and execute Python code to answer user
 Begin the conversation by introducing yourself and asking the user what they would like to analyze.
 """
 
-@st.cache_data
-def get_synthesizer_prompt():
-    return """You are an expert business analyst and senior strategist.
-Your goal is to provide a single, cohesive, and insightful executive summary based on the data provided.
-
-You will be given the user's question, your own thought process, the code you executed, and the raw data result from that code.
-
-**CRITICAL INSTRUCTION: You MUST extract the actual data (names, numbers, percentages) from the 'Raw Result' section and embed it directly into your summary. DO NOT use placeholders like '[Insert Data]' or '[Site Name]'. Your response must be ready for a final report.**
-
-- Start with a bolded headline that directly answers the user's core question.
-- Weave the specific results from the data into a clear and easy-to-understand narrative.
-- Connect the data to business goals like speed, efficiency, or performance.
-- Conclude with a clear recommendation or key takeaway based on the data.
-"""
-
-# --- Main Chat Logic ---
+# --- Conversational Chat Logic ---
 if "chat" not in st.session_state:
+    # The start_chat call is now simplified
     st.session_state.chat = model.start_chat(history=[])
     
+    # Send the initial system prompt and get the first message
     initial_response = st.session_state.chat.send_message(get_system_prompt())
     st.session_state.messages = [{"role": "assistant", "content": initial_response.text}]
 
@@ -129,10 +118,12 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
+    # Send user prompt to the model and get the response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             response = st.session_state.chat.send_message(user_prompt)
             
+            # Check if the response contains code to be executed
             code_match = re.search(r"```python\s*([\s\S]+?)```", response.text)
             
             if code_match:
@@ -140,6 +131,7 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                 with st.expander("View AI's Generated Code", expanded=True):
                     st.code(code_to_execute, language="python")
 
+                # Execute the code and capture the output
                 st.markdown("**Execution Result:**")
                 result_display_area = st.container()
                 output_buffer = StringIO()
@@ -156,22 +148,18 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                     if execution_output:
                         st.text(execution_output)
                     
+                    # Send the execution result back to the model for summarization
                     with st.spinner("Summarizing results..."):
-                        # --- THIS IS THE CORRECTED LOGIC ---
-                        # We combine the forceful synthesizer prompt with the context and send it back
-                        # into the SAME chat session.
-                        summary_prompt = f"{get_synthesizer_prompt()}\n\nHere is the user's question and the result of the code I just ran. Please provide the executive summary now.\n\nUser Question: {user_prompt}\n\nRaw Result:\n{execution_output or 'A plot was generated successfully.'}"
-                        
+                        summary_prompt = f"Here is the output from your code. Please provide a comprehensive, user-friendly summary of these findings. If it's a plot, describe the key insights. If it's a table, explain what the data shows.\n\nOutput:\n{execution_output or 'A plot was generated successfully.'}"
                         summary_response = st.session_state.chat.send_message(summary_prompt)
-                        summary_text = summary_response.text
-                        
-                        st.markdown(summary_text)
-                        st.session_state.messages.append({"role": "assistant", "content": summary_text})
+                        st.markdown(summary_response.text)
+                        st.session_state.messages.append({"role": "assistant", "content": summary_response.text})
 
                 except Exception:
                     error_traceback = traceback.format_exc()
                     st.error("An error occurred during code execution:")
                     st.code(error_traceback, language="bash")
+                    # Send error back to the model for potential self-correction
                     with st.spinner("Attempting to self-correct..."):
                         correction_prompt = f"The code you provided failed to execute with the following error. Please analyze the error and provide a corrected version of the code. \n\nError:\n{error_traceback}"
                         correction_response = st.session_state.chat.send_message(correction_prompt)
@@ -179,8 +167,9 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                         st.session_state.messages.append({"role": "assistant", "content": "**AI Self-Correction Attempt:**\n" + correction_response.text})
                 
                 finally:
-                    sys.stdout = sys.__stdout__
+                    sys.stdout = sys.__stdout__ # Restore stdout
             
             else:
+                # If no code, just display the text response
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
