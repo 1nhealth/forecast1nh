@@ -16,7 +16,6 @@ import sys
 from constants import *
 from helpers import format_performance_df
 
-# --- Page Configuration ---
 st.set_page_config(page_title="AI Analyst", page_icon="🤖", layout="wide")
 
 with st.sidebar:
@@ -24,10 +23,9 @@ with st.sidebar:
 
 st.title("🤖 Strategic AI Analyst")
 st.info("""
-This AI Analyst reasons like a human analyst. It has access to the app's pre-calculated reports (like Site Performance) and can write custom code for novel questions. It uses the global scoring weights set on the **Site Performance** page.
+This AI Analyst is now a conversational partner. It remembers your previous questions and can use its Python tool to analyze data, find insights, and even correct its own mistakes. Start by asking a question!
 """)
 
-# --- Page Guard ---
 if not st.session_state.get('data_processed_successfully', False):
     st.warning("Please upload and process your data on the 'Home & Data Setup' page first.")
     st.stop()
@@ -37,23 +35,8 @@ df = st.session_state.referral_data_processed
 ts_col_map = st.session_state.ts_col_map
 ordered_stages = st.session_state.ordered_stages
 status_history_col = "Parsed_Lead_Status_History"
-
-weights = {
-    "StS to Enrollment %": st.session_state.w_site_sts_to_enr,
-    "ICF to Enrollment %": st.session_state.w_site_icf_to_enroll,
-    "StS to ICF %": st.session_state.w_site_sts_to_icf,
-    "StS to Appt %": st.session_state.w_site_sts_appt,
-    "StS Contact Rate %": st.session_state.w_site_contact_rate,
-    "Average time to first site action": st.session_state.w_site_avg_time_to_first_action,
-    "Avg time from StS to Appt Sched.": st.session_state.w_site_lag_sts_appt,
-    "Avg. Time Between Site Contacts": st.session_state.w_site_avg_time_between_contacts,
-    "Avg time from StS to ICF": st.session_state.w_site_lag_sts_icf,
-    "Total Referrals Awaiting First Site Action": st.session_state.w_site_awaiting_action,
-    "SF or Lost After ICF %": st.session_state.w_site_icf_to_lost,
-    "StS to Lost %": st.session_state.w_site_sts_to_lost,
-    'Qualified to Enrollment %': st.session_state.w_site_qual_to_enroll,
-    'Qualified to ICF %': st.session_state.w_site_qual_to_icf,
-}
+site_performance_df = st.session_state.enhanced_site_metrics_df
+utm_performance_df = st.session_state.enhanced_ad_source_metrics_df
 
 # --- Configure the Gemini API ---
 try:
@@ -73,151 +56,113 @@ def get_df_info(df):
     return buffer.getvalue()
 
 @st.cache_data
-def get_coder_prompt(_df_info, _ts_col_map_str, _site_perf_info, _utm_perf_info):
-    prompt_parts = [
-        "You are an expert Python data analyst. Your goal is to answer a user's question by generating a 'Thought' process and then the `Code` to execute it.",
-        "\n--- RESPONSE FORMAT ---",
-        "You MUST respond in two parts:",
-        "1.  **Thought:** A step-by-step thought process explaining your plan. You MUST explicitly state the full, exact column and variable names you will use.",
-        "2.  **Code:** A single, executable Python code block that implements your plan.",
-        
-        "\n--- COMPLETE EXAMPLE OF A COMPLEX REQUEST ---",
-        "User Request: \"Show me in a line graph the enrollment trend for each site in the study by week\"",
-        "Thought:",
-        "1.  The user wants a weekly trend of 'enrollments' for each 'site'.",
-        "2.  I must use the raw `df` to get weekly granularity.",
-        "3.  The Golden Rule says analysis of 'enrollments' MUST use the enrollment timestamp, which is `'TS_Enrolled'`.",
-        "4.  I will group by `'Site'` and `pd.Grouper` on the `'TS_Enrolled'` column with a weekly frequency (`freq='W'`).",
-        "5.  Finally, I will use `plotly.express` (as `px`) to create a line chart and display it with `st.plotly_chart()`.",
-        "```python",
-        "import plotly.express as px",
-        "enrollment_col = ts_col_map.get('Enrolled')",
-        "if enrollment_col and enrollment_col in df.columns:",
-        "    weekly_df = df.dropna(subset=[enrollment_col]).copy()",
-        "    weekly_by_site = weekly_df.groupby(['Site', pd.Grouper(key=enrollment_col, freq='W')]).size().reset_index(name='Enrollment Count')",
-        "    fig = px.line(weekly_by_site, x=enrollment_col, y='Enrollment Count', color='Site', title='Weekly Enrollment Trend by Site')",
-        "    st.plotly_chart(fig, use_container_width=True)",
-        "else:",
-        "    print('Enrollment data is not available.')",
-        "```",
-        
-        "\n--- AVAILABLE VARIABLES & DATAFRAMES ---",
-        "1.  `site_performance_df`: Pre-computed DataFrame with aggregate site metrics.",
-        "2.  `utm_performance_df`: Pre-computed DataFrame with aggregate UTM metrics.",
-        "3.  `df`: The raw master DataFrame.",
-        "4.  `ts_col_map`: Dictionary mapping stage names to timestamp columns.",
-        
-        "\n--- CRITICAL CODING RULE ---",
-        "**Your final output MUST be displayed using a Streamlit function.** For a Matplotlib plot, you MUST end your code with `st.pyplot(plt.gcf())`. **DO NOT use `plt.show()`**. For any other output, use `st.dataframe()` or `print()`.",
-        
-        "\n--- DATAFRAME SCHEMAS ---",
-        f"**`site_performance_df` Schema:**\n{_site_perf_info}",
-        f"\n**`utm_performance_df` Schema:**\n{_utm_perf_info}",
-        "\n--- RAW `df` SCHEMA ---",
-        _df_info,
-    ]
-    return "\n".join(prompt_parts)
+def get_system_prompt():
+    site_perf_info = get_df_info(st.session_state.enhanced_site_metrics_df)
+    utm_perf_info = get_df_info(st.session_state.enhanced_ad_source_metrics_df)
+    raw_df_info = get_df_info(st.session_state.referral_data_processed)
 
-@st.cache_data
-def get_synthesizer_prompt():
-    return """You are an expert business analyst and senior strategist.
-Your goal is to provide a single, cohesive, and insightful executive summary based on a series of data analyses.
-You will be given the user's question, the AI's thought process, the code executed, and the raw data result.
-- Start with a bolded headline that answers the user's core question.
-- Weave the results into a narrative.
-- Connect the data to business goals like speed, efficiency, or performance.
-- Conclude with a clear recommendation or key takeaway.
+    return f"""You are an expert-level Python data analyst and a helpful AI assistant. Your goal is to be a full partner in data analysis for the user.
+
+You have been provided with three pandas DataFrames:
+1. `df`: The raw, event-level referral data.
+2. `site_performance_df`: A pre-computed summary of performance metrics for each site.
+3. `utm_performance_df`: A pre-computed summary of performance metrics for each UTM source.
+
+Your primary tool is the ability to write and execute Python code to answer user questions.
+
+**Your Workflow:**
+1.  **Reason:** When the user asks a question, first think about the best way to answer it. Do you need to use one of the pre-computed dataframes, or do you need to perform a custom calculation on the raw `df`?
+2.  **Act:** If you need to analyze data, you MUST respond ONLY with a Python code block enclosed in ```python ... ```. Do not include any other text or explanation. Your code must end with a Streamlit display command (e.g., `st.dataframe()`, `st.plotly_chart()`, `print()`).
+3.  **Observe & Summarize:** After your code is executed by the system, you will receive the output. Your job is then to provide a final, comprehensive, and user-friendly summary of the findings in plain English. Weave the results into a narrative and conclude with a clear recommendation or key takeaway.
+4.  **Converse:** If the user's request is ambiguous, ask clarifying questions. If you don't need to write code, you can answer directly.
+
+**DATAFRAME SCHEMAS:**
+
+**`site_performance_df` Schema:**
+{site_perf_info}
+
+**`utm_performance_df` Schema:**
+{utm_perf_info}
+
+**Raw `df` Schema:**
+{raw_df_info}
+
+Begin the conversation by introducing yourself and asking the user what they would like to analyze.
 """
 
-# --- Main Chat Logic ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# --- Conversational Chat Logic ---
+if "chat" not in st.session_state:
+    st.session_state.chat = model.start_chat(
+        history=[], 
+        generation_config=genai.GenerationConfig(temperature=0.2)
+    )
+    # Send the initial system prompt and get the first message
+    initial_response = st.session_state.chat.send_message(get_system_prompt())
+    st.session_state.messages = [{"role": "assistant", "content": initial_response.text}]
 
+# Display existing messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# Handle user input
 if user_prompt := st.chat_input("Ask a question about your data..."):
     st.session_state.messages.append({"role": "user", "content": user_prompt})
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
+    # Send user prompt to the model and get the response
     with st.chat_message("assistant"):
-        with st.spinner("Accessing business reports and forming a plan..."):
-            # --- FIX: Read the pre-calculated DataFrames directly from session state ---
-            site_perf_df = st.session_state.enhanced_site_metrics_df
-            utm_perf_df = st.session_state.enhanced_ad_source_metrics_df
+        with st.spinner("Thinking..."):
+            response = st.session_state.chat.send_message(user_prompt)
             
-            site_perf_info = get_df_info(site_perf_df)
-            utm_perf_info = get_df_info(utm_perf_df)
+            # Check if the response contains code to be executed
+            code_match = re.search(r"```python\s*([\s\S]+?)```", response.text)
             
-            try:
-                coder_prompt = get_coder_prompt(get_df_info(df), str(ts_col_map), site_perf_info, utm_perf_info)
-                full_coder_prompt = coder_prompt + f"\n\nNow, generate a Thought and Code block for this user request:\n{user_prompt}"
-                response = model.generate_content(full_coder_prompt)
-                
-                match = re.search(r"Thought:(.*?)```python(.*?)```", response.text, re.DOTALL)
-                if match:
-                    thought = match.group(1).strip()
-                    code_response = match.group(2).strip()
-                else:
-                    thought = "The AI did not provide a thought process. It may be a simple request."
-                    code_response = response.text.strip().replace("```python", "").replace("```", "").strip()
+            if code_match:
+                code_to_execute = code_match.group(1).strip()
+                with st.expander("View AI's Generated Code", expanded=True):
+                    st.code(code_to_execute, language="python")
 
-            except Exception as e:
-                st.error(f"An error occurred while generating code: {e}")
-                st.stop()
-        
-        with st.expander("View AI's Thought Process and Code", expanded=True):
-            st.markdown("**Thought Process:**")
-            st.info(thought)
-            st.markdown("**Generated Code:**")
-            st.code(code_response, language="python")
-
-        with st.spinner("Executing code..."):
-            st.markdown("**Execution Result:**")
-            result_display_area = st.container()
-            result_output_str = ""
-            try:
-                execution_globals = {
-                    "__builtins__": __builtins__, "st": st, "pd": pd, "np": np, "plt": plt, "alt": alt, "mdates": mdates, "go": go, "px": px,
-                    "df": df, "site_performance_df": site_perf_df, "utm_performance_df": utm_perf_df,
-                    "ordered_stages": ordered_stages, "ts_col_map": ts_col_map, "weights": weights
-                }
+                # Execute the code and capture the output
+                st.markdown("**Execution Result:**")
+                result_display_area = st.container()
                 output_buffer = StringIO()
                 sys.stdout = output_buffer
-                with result_display_area:
-                    exec(code_response, execution_globals)
-                sys.stdout = sys.__stdout__
-                result_output_str = output_buffer.getvalue()
+                
+                try:
+                    with result_display_area:
+                        exec(code_to_execute, {
+                            "st": st, "pd": pd, "np": np, "px": px, "go": go, "plt": plt, "alt": alt,
+                            "df": df, "site_performance_df": site_performance_df, "utm_performance_df": utm_performance_df,
+                            "ts_col_map": ts_col_map, "ordered_stages": ordered_stages
+                        })
+                    execution_output = output_buffer.getvalue()
+                    if execution_output:
+                        st.text(execution_output)
+                    
+                    # Send the execution result back to the model for summarization
+                    with st.spinner("Summarizing results..."):
+                        summary_prompt = f"Here is the output from your code. Please provide a comprehensive, user-friendly summary of these findings. If it's a plot, describe the key insights. If it's a table, explain what the data shows.\n\nOutput:\n{execution_output or 'A plot was generated successfully.'}"
+                        summary_response = st.session_state.chat.send_message(summary_prompt)
+                        st.markdown(summary_response.text)
+                        st.session_state.messages.append({"role": "assistant", "content": summary_response.text})
 
-                if result_output_str:
-                    st.text(result_output_str)
-
-            except Exception:
-                error_traceback = traceback.format_exc()
-                st.error("An error occurred during code execution:")
-                st.code(error_traceback, language="bash")
-                st.stop()
-
-        with st.spinner("Synthesizing final summary..."):
-            synthesis_context_parts = [
-                "**User's Question:**", user_prompt, "\n\n",
-                "**AI's Thought Process:**", thought, "\n\n",
-                "**Executed Code:**", f"```python\n{code_response}\n```\n\n",
-                "**Raw Result:**", result_output_str if result_output_str else "A plot was successfully generated."
-            ]
-            synthesis_context = "".join(synthesis_context_parts)
+                except Exception:
+                    error_traceback = traceback.format_exc()
+                    st.error("An error occurred during code execution:")
+                    st.code(error_traceback, language="bash")
+                    # Send error back to the model for potential self-correction
+                    with st.spinner("Attempting to self-correct..."):
+                        correction_prompt = f"The code you provided failed to execute with the following error. Please analyze the error and provide a corrected version of the code. \n\nError:\n{error_traceback}"
+                        correction_response = st.session_state.chat.send_message(correction_prompt)
+                        st.markdown("**AI Self-Correction Attempt:**\n" + correction_response.text)
+                        st.session_state.messages.append({"role": "assistant", "content": "**AI Self-Correction Attempt:**\n" + correction_response.text})
+                
+                finally:
+                    sys.stdout = sys.__stdout__ # Restore stdout
             
-            synthesizer_prompt = get_synthesizer_prompt()
-            full_synthesizer_prompt = f"{synthesizer_prompt}\n\n--- ANALYSIS DETAILS ---\n{synthesis_context}\n\n--- EXECUTIVE SUMMARY ---"
-            
-            try:
-                summary_response = model.generate_content(full_synthesizer_prompt)
-                summary_text = summary_response.text
-            except Exception as e:
-                summary_text = f"Could not generate summary: {e}"
-        
-        st.markdown("--- \n ## Executive Summary")
-        st.markdown(summary_text)
-        st.session_state.messages.append({"role": "assistant", "content": f"**Executive Summary:**\n{summary_text}"})
+            else:
+                # If no code, just display the text response
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
