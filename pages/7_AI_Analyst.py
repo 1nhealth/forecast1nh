@@ -45,7 +45,7 @@ try:
     
     generation_config = genai.GenerationConfig(temperature=0.2)
     model = genai.GenerativeModel(
-        'gemini-flash-latest',
+        'gemini-1.5-flash',
         generation_config=generation_config
     )
 
@@ -62,15 +62,40 @@ def get_df_info(df):
     return buffer.getvalue()
 
 @st.cache_data
-def get_coder_prompt(_df_info, _ts_col_map_str, _site_perf_info, _utm_perf_info):
-    # This prompt instructs the AI on how to generate code. It remains unchanged.
-    # For brevity, I am not re-pasting the full text here, but it is included in the final code block.
-    return f"""You are an expert-level Python data analyst...
-...
+def get_system_prompt():
+    site_perf_info = get_df_info(st.session_state.enhanced_site_metrics_df)
+    utm_perf_info = get_df_info(st.session_state.enhanced_ad_source_metrics_df)
+    raw_df_info = get_df_info(st.session_state.referral_data_processed)
+
+    return f"""You are an expert-level Python data analyst and a helpful AI assistant. Your goal is to be a full partner in data analysis for the user.
+
+You have been provided with three pandas DataFrames:
+1. `df`: The raw, event-level referral data.
+2. `site_performance_df`: A pre-computed summary of performance metrics for each site.
+3. `utm_performance_df`: A pre-computed summary of performance metrics for each UTM source.
+
+Your primary tool is the ability to write and execute Python code to answer user questions.
+
+**Your Workflow:**
+1.  **Reason:** When the user asks a question, first think about the best way to answer it. Do you need to use one of the pre-computed dataframes, or do you need to perform a custom calculation on the raw `df`?
+2.  **Act:** If you need to analyze data, you MUST respond ONLY with a Python code block enclosed in ```python ... ```. Do not include any other text or explanation. Your code must end with a Streamlit display command (e.g., `st.dataframe()`, `st.plotly_chart()`, `print()`).
+3.  **Observe & Summarize:** After your code is executed by the system, you will receive the output. Your job is then to provide a final, comprehensive, and user-friendly summary of the findings in plain English. Weave the results into a narrative and conclude with a clear recommendation or key takeaway.
+4.  **Converse:** If the user's request is ambiguous, ask clarifying questions. If you don't need to write code, you can answer directly.
+
+**DATAFRAME SCHEMAS:**
+
+**`site_performance_df` Schema:**
+{site_perf_info}
+
+**`utm_performance_df` Schema:**
+{utm_perf_info}
+
+**Raw `df` Schema:**
+{raw_df_info}
+
 Begin the conversation by introducing yourself and asking the user what they would like to analyze.
 """
 
-# --- THIS IS THE UPDATED PROMPT ---
 @st.cache_data
 def get_synthesizer_prompt():
     return """You are an expert business analyst and senior strategist.
@@ -90,13 +115,7 @@ You will be given the user's question, your own thought process, the code you ex
 if "chat" not in st.session_state:
     st.session_state.chat = model.start_chat(history=[])
     
-    # Get the full system prompt only once
-    site_perf_info = get_df_info(st.session_state.enhanced_site_metrics_df)
-    utm_perf_info = get_df_info(st.session_state.enhanced_ad_source_metrics_df)
-    raw_df_info = get_df_info(st.session_state.referral_data_processed)
-    system_prompt = get_coder_prompt(raw_df_info, str(ts_col_map), site_perf_info, utm_perf_info)
-
-    initial_response = st.session_state.chat.send_message(system_prompt)
+    initial_response = st.session_state.chat.send_message(get_system_prompt())
     st.session_state.messages = [{"role": "assistant", "content": initial_response.text}]
 
 # Display existing messages
@@ -138,28 +157,16 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                         st.text(execution_output)
                     
                     with st.spinner("Summarizing results..."):
-                        # Get the synthesizer prompt with the new strict instructions
-                        synthesizer_prompt = get_synthesizer_prompt()
+                        # --- THIS IS THE CORRECTED LOGIC ---
+                        # We combine the forceful synthesizer prompt with the context and send it back
+                        # into the SAME chat session.
+                        summary_prompt = f"{get_synthesizer_prompt()}\n\nHere is the user's question and the result of the code I just ran. Please provide the executive summary now.\n\nUser Question: {user_prompt}\n\nRaw Result:\n{execution_output or 'A plot was generated successfully.'}"
                         
-                        synthesis_context_parts = [
-                            "**User's Question:**", user_prompt, "\n\n",
-                            "**My Thought Process:**", st.session_state.chat.history[-2].parts[0].text, "\n\n", # Get the AI's previous thought
-                            "**My Executed Code:**", f"```python\n{code_to_execute}\n```\n\n",
-                            "**Raw Result:**", execution_output if execution_output else "A plot was generated successfully."
-                        ]
-                        synthesis_context = "".join(synthesis_context_parts)
-                        
-                        full_synthesizer_prompt = f"{synthesizer_prompt}\n\n--- ANALYSIS DETAILS ---\n{synthesis_context}\n\n--- EXECUTIVE SUMMARY ---"
-
-                        summary_response = model.generate_content(full_synthesizer_prompt) # Use a one-off call for this
+                        summary_response = st.session_state.chat.send_message(summary_prompt)
                         summary_text = summary_response.text
                         
                         st.markdown(summary_text)
                         st.session_state.messages.append({"role": "assistant", "content": summary_text})
-                        # Also add the executed code and results to the visible history for context
-                        st.session_state.chat.history.append(response.parts[0]) # The AI's code response
-                        st.session_state.chat.history.append(genai.types.Content(role="user", parts=[genai.types.Part(text=f"CONTEXT: The code was executed and produced the following result, which you will now summarize for the user:\n{execution_output or 'A plot was generated successfully.'}")]))
-
 
                 except Exception:
                     error_traceback = traceback.format_exc()
