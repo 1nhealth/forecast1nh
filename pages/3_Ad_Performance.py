@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 
-from calculations import calculate_enhanced_ad_metrics
 from scoring import score_performance_groups
 from helpers import format_performance_df
 
@@ -25,13 +24,12 @@ if not st.session_state.get('data_processed_successfully', False):
 
 with st.expander("Adjust Ad Performance Scoring Weights"):
     st.markdown("Adjust the importance of different metrics in the overall ad channel score. Changes here do not affect the Site Performance page.")
-    
     c1, c2, c3 = st.columns(3)
     with c1:
         st.subheader("Conversion Weights")
         st.slider("Qualified to Enrollment %", 0, 100, key="w_ad_qual_to_enroll")
-        st.slider("ICF to Enrollment %", 0, 100, key="w_ad_icf_to_enroll")
         st.slider("Qualified to ICF %", 0, 100, key="w_ad_qual_to_icf")
+        st.slider("ICF to Enrollment %", 0, 100, key="w_ad_icf_to_enroll")
         st.slider("StS to Appt %", 0, 100, key="w_ad_sts_to_appt")
     with c2:
         st.subheader("Speed / Lag Weights")
@@ -56,17 +54,11 @@ with st.expander("Adjust Ad Performance Scoring Weights"):
         total_weight = sum(abs(w) for w in weights.values())
         weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
         
-        # Recalculate for UTM Source
-        utm_source_metrics_df = calculate_enhanced_ad_metrics(st.session_state.referral_data_processed, st.session_state.ordered_stages, st.session_state.ts_col_map, "UTM Source", "Unclassified Source")
-        if not utm_source_metrics_df.empty:
-            st.session_state.ranked_ad_source_df = score_performance_groups(utm_source_metrics_df, weights_normalized, "UTM Source")
+        if not st.session_state.enhanced_ad_source_metrics_df.empty:
+            st.session_state.ranked_ad_source_df = score_performance_groups(st.session_state.enhanced_ad_source_metrics_df, weights_normalized, "UTM Source")
         
-        # Recalculate for UTM Source/Medium
-        df_for_combo = st.session_state.referral_data_processed.copy()
-        df_for_combo['UTM Source/Medium'] = df_for_combo['UTM Source'].astype(str).fillna("Unclassified") + ' / ' + df_for_combo['UTM Medium'].astype(str).fillna("Unclassified")
-        utm_combo_metrics_df = calculate_enhanced_ad_metrics(df_for_combo, st.session_state.ordered_stages, st.session_state.ts_col_map, "UTM Source/Medium", "Unclassified Combo")
-        if not utm_combo_metrics_df.empty:
-            st.session_state.ranked_ad_combo_df = score_performance_groups(utm_combo_metrics_df, weights_normalized, "UTM Source/Medium")
+        if not st.session_state.enhanced_ad_combo_metrics_df.empty:
+            st.session_state.ranked_ad_combo_df = score_performance_groups(st.session_state.enhanced_ad_combo_metrics_df, weights_normalized, "UTM Source/Medium")
 
 # --- Performance by UTM Source ---
 with st.container(border=True):

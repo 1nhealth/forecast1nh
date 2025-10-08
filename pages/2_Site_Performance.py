@@ -8,7 +8,6 @@ from calculations import (
     calculate_site_ttfc_effectiveness, 
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
-    calculate_enhanced_site_metrics,
     calculate_lost_reasons_after_sts
 )
 from plotly.subplots import make_subplots
@@ -33,7 +32,7 @@ with st.container(border=True):
     st.subheader("Site Operational Analysis")
     st.markdown("Analyze site-level efficiency. Select a specific site or view the overall average for all metrics in this section.")
 
-    site_list = st.session_state.referral_data_processed['Site'].unique().tolist()
+    site_list = st.session_state.enhanced_site_metrics_df['Site'].unique().tolist()
     site_list = [site for site in site_list if site != "Unassigned Site"]
     options = ["Overall"] + sorted(site_list)
     
@@ -85,16 +84,8 @@ with st.container(border=True):
         display_df['Appt. Rate'] = display_df['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['ICF Rate'] = display_df['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df['Enrollment Rate'] = display_df['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
-        
-        display_df.rename(columns={
-            'Attempts': 'Total Referrals', 'Total_Appts': 'Total Appointments',
-            'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'
-        }, inplace=True)
-        
-        final_cols = [
-            'Time to First Site Action', 'Total Referrals', 'Total Appointments', 'Appt. Rate',
-            'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate'
-        ]
+        display_df.rename(columns={'Attempts': 'Total Referrals', 'Total_Appts': 'Total Appointments', 'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'}, inplace=True)
+        final_cols = ['Time to First Site Action', 'Total Referrals', 'Total Appointments', 'Appt. Rate', 'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate']
         st.dataframe(display_df[final_cols], hide_index=True, use_container_width=True)
     
     st.divider()
@@ -108,15 +99,8 @@ with st.container(border=True):
         display_df_contact['Appt. Rate'] = display_df_contact['Appt_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df_contact['ICF Rate'] = display_df_contact['ICF_Rate'].map('{:.1%}'.format).replace('nan%', '-')
         display_df_contact['Enrollment Rate'] = display_df_contact['Enrollment_Rate'].map('{:.1%}'.format).replace('nan%', '-')
-        
-        display_df_contact.rename(columns={
-            'Total_Appts': 'Total Appointments', 'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'
-        }, inplace=True)
-        
-        final_cols_contact = [
-            'Number of Site Attempts', 'Total Referrals', 'Total Appointments', 'Appt. Rate',
-            'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate'
-        ]
+        display_df_contact.rename(columns={'Total_Appts': 'Total Appointments', 'Total_ICF': 'Total ICFs', 'Total_Enrolled': 'Total Enrollments'}, inplace=True)
+        final_cols_contact = ['Number of Site Attempts', 'Total Referrals', 'Total Appointments', 'Appt. Rate', 'Total ICFs', 'ICF Rate', 'Total Enrollments', 'Enrollment Rate']
         st.dataframe(display_df_contact[final_cols_contact], hide_index=True, use_container_width=True)
     
     st.divider()
@@ -125,16 +109,12 @@ with st.container(border=True):
     chart_col1, _ = st.columns([2, 1]) 
     with chart_col1:
         if not lost_reasons.empty:
-            # --- THIS IS THE MODIFIED SECTION ---
-            brand_color_sequence = [
-                '#53CA97', '#7991C6', '#F4A261', '#E76F51', 
-                '#2A9D8F', '#E9C46A', '#A2D2FF', '#FFB703'
-            ]
+            brand_color_sequence = ['#53CA97', '#7991C6', '#F4A261', '#E76F51', '#2A9D8F', '#E9C46A', '#A2D2FF', '#FFB703']
             fig = px.pie(
                 values=lost_reasons.values, 
                 names=lost_reasons.index,
                 title=f"Breakdown of {lost_reasons.sum()} Lost Referrals",
-                color_discrete_sequence=brand_color_sequence # Applied brand colors here
+                color_discrete_sequence=brand_color_sequence
             )
             fig.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig, use_container_width=True)
@@ -149,7 +129,6 @@ with st.container(border=True):
         st.info(f"Not enough data for '{selected_site}' to generate a performance trend graph.")
     else:
         secondary_metric = 'Total Sent to Site per Week'
-        
         primary_metric_options = {
             'Sent to Site -> Appointment %': ('Sent to Site -> Appointment % (Actual)', 'Sent to Site -> Appointment % (Projected)'),
             'Sent to Site -> ICF %': ('Sent to Site -> ICF % (Actual)', 'Sent to Site -> ICF % (Projected)'),
@@ -157,48 +136,29 @@ with st.container(border=True):
             'Total Appointments per Week': ('Total Appointments per Week', None),
             'Average Time to First Site Action (Days)': ('Average Time to First Site Action (Days)', None),
         }
-
         available_options = [opt for opt, cols in primary_metric_options.items() if cols[0] in over_time_df.columns]
         
-        if not available_options:
-            st.warning("No performance metrics could be calculated for the trend chart.")
-        else:
-            primary_metric_display_name = st.selectbox(
-                "Select a primary metric to display on the chart:",
-                options=available_options,
-                key=f"site_perf_time_selector_{selected_site.replace(' ', '_')}"
-            )
-            
+        if available_options:
+            primary_metric_display_name = st.selectbox("Select a primary metric to display on the chart:", options=available_options, key=f"site_perf_time_selector_{selected_site.replace(' ', '_')}")
             compare_with_volume = st.toggle(f"Compare with {secondary_metric}", value=True, key=f"site_perf_time_toggle_{selected_site.replace(' ', '_')}")
-            
             actual_col, projected_col = primary_metric_options[primary_metric_display_name]
-
             fig = make_subplots(specs=[[{"secondary_y": True}]])
-
             fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name, mode='lines+markers', line=dict(color='#53CA97')), secondary_y=False)
             if projected_col and projected_col in over_time_df.columns:
                 fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend", mode='lines', line=dict(color='#53CA97', dash='dot'), showlegend=False), secondary_y=False)
-
             if compare_with_volume and secondary_metric in over_time_df.columns:
                 fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')), secondary_y=True)
-
             fig.update_yaxes(title_text=f"<b>{primary_metric_display_name}</b>", secondary_y=False)
             if compare_with_volume and secondary_metric in over_time_df.columns:
                 fig.update_yaxes(title_text=f"<b>{secondary_metric}</b>", secondary_y=True, showgrid=False)
-
-            fig.update_layout(
-                title_text=f"Weekly Trend for {selected_site}: {primary_metric_display_name}",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
+            fig.update_layout(title_text=f"Weekly Trend for {selected_site}: {primary_metric_display_name}", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
 with st.expander("Adjust Site Performance Scoring Weights"):
     st.markdown("Adjust the importance of different metrics in the overall site score. Changes here do not affect the Ad Performance page.")
-    
     c1, c2, c3 = st.columns(3)
-    
     with c1:
         st.subheader("Conversion Weights")
         st.slider("StS -> Enrollment %", 0, 100, key="w_site_sts_to_enr")
@@ -206,7 +166,6 @@ with st.expander("Adjust Site Performance Scoring Weights"):
         st.slider("StS -> ICF %", 0, 100, key="w_site_sts_to_icf")
         st.slider("StS -> Appt %", 0, 100, key="w_site_sts_appt")
         st.slider("StS Contact Rate %", 0, 100, key="w_site_contact_rate")
-
     with c2:
         st.subheader("Speed / Lag Weights")
         st.markdown("_Lower is better for these metrics._")
@@ -215,7 +174,6 @@ with st.expander("Adjust Site Performance Scoring Weights"):
         st.slider("Avg. Time Between Site Contacts", 0, 100, key="w_site_avg_time_between_contacts")
         st.slider("Avg time from StS to ICF", 0, 100, key="w_site_lag_sts_icf")
         st.slider("Total Referrals Awaiting First Site Action", 0, 100, key="w_site_awaiting_action")
-        
     with c3:
         st.subheader("Negative Outcome Weights")
         st.markdown("_Lower is better for these metrics._")
@@ -242,9 +200,9 @@ with st.expander("Adjust Site Performance Scoring Weights"):
         total_weight = sum(abs(w) for w in weights.values())
         weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
         
-        enhanced_site_metrics_df = calculate_enhanced_site_metrics(st.session_state.referral_data_processed, st.session_state.ordered_stages, st.session_state.ts_col_map, "Parsed_Lead_Status_History")
-        if not enhanced_site_metrics_df.empty:
-            st.session_state.ranked_sites_df = score_sites(enhanced_site_metrics_df, weights_normalized)
+        # --- FIX: Read pre-calculated DF from state ---
+        if not st.session_state.enhanced_site_metrics_df.empty:
+            st.session_state.ranked_sites_df = score_sites(st.session_state.enhanced_site_metrics_df, weights_normalized)
         else:
             st.session_state.ranked_sites_df = pd.DataFrame()
 

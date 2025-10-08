@@ -13,10 +13,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import sys
 
-# Direct imports from modules in the root directory
 from constants import *
-from calculations import calculate_enhanced_site_metrics, calculate_enhanced_ad_metrics
-from scoring import score_performance_groups
 from helpers import format_performance_df
 
 # --- Page Configuration ---
@@ -41,7 +38,6 @@ ts_col_map = st.session_state.ts_col_map
 ordered_stages = st.session_state.ordered_stages
 status_history_col = "Parsed_Lead_Status_History"
 
-# --- FIX 1: Use the dedicated and complete SITE weights ---
 weights = {
     "StS to Enrollment %": st.session_state.w_site_sts_to_enr,
     "ICF to Enrollment %": st.session_state.w_site_icf_to_enroll,
@@ -147,12 +143,11 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Pre-calculating business reports and forming a plan..."):
-            # --- FIX 2: Use the new enhanced calculation functions ---
-            site_perf_df = calculate_enhanced_site_metrics(df, ordered_stages, ts_col_map, status_history_col)
-            utm_perf_df = calculate_enhanced_ad_metrics(df, ordered_stages, ts_col_map, 'UTM Source', 'Unclassified Source')
+        with st.spinner("Accessing business reports and forming a plan..."):
+            # --- FIX: Read the pre-calculated DataFrames directly from session state ---
+            site_perf_df = st.session_state.enhanced_site_metrics_df
+            utm_perf_df = st.session_state.enhanced_ad_source_metrics_df
             
-            # --- FIX 3: Update the info provided to the AI's prompt ---
             site_perf_info = get_df_info(site_perf_df)
             utm_perf_info = get_df_info(utm_perf_df)
             
