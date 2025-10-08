@@ -32,8 +32,9 @@ processed_data = st.session_state.referral_data_processed
 ordered_stages = st.session_state.ordered_stages
 ts_col_map = st.session_state.ts_col_map
 inter_stage_lags = st.session_state.inter_stage_lags
-site_metrics = st.session_state.site_metrics_calculated
-weights = st.session_state.get("weights_normalized", {})
+# --- FIX: Use the new session state key for the enhanced metrics DataFrame ---
+site_metrics = st.session_state.enhanced_site_metrics_df
+weights = {} # Placeholder for potential future use
 
 # --- Page-Specific Controls ---
 with st.container(border=True):
@@ -98,13 +99,11 @@ with st.container(border=True):
         f"{STAGE_APPOINTMENT_SCHEDULED} -> {STAGE_SIGNED_ICF}": cr4.slider("AI: Appt -> ICF %", 0.0, 100.0, 60.0, format="%.1f%%", key='ai_cr_ai') / 100.0
     }
 
-# --- THIS IS THE RESTORED SITE CONFIGURATION BLOCK ---
 with st.expander("Optional Site Configurations"):
     site_activity_schedule = {}
     site_caps = {}
 
     if site_metrics is not None and not site_metrics.empty:
-        # --- Site Activation/Deactivation ---
         st.markdown("##### Site Activation/Deactivation Dates")
         st.caption("Define when sites are active for QL allocation. Leave blank if always active.")
         site_activity_df_data = [{"Site": s, "Activation Date": None, "Deactivation Date": None} for s in site_metrics['Site'].unique()]
@@ -116,31 +115,24 @@ with st.expander("Optional Site Configurations"):
             }
         
         st.divider()
-
-        # --- THIS IS THE CORRECTED AND COMPLETE SITE CAPS BLOCK ---
         st.markdown("##### Monthly Qual Capacity by Site")
         st.caption("Set a maximum number of 'Passed Online Form' (POF) leads a site can handle per month. Leave blank for no cap.")
         
-        # 1. Pre-calculate the historical average POF per site per month
         avg_monthly_pof_per_site = {}
         pof_ts_col = ts_col_map.get(STAGE_PASSED_ONLINE_FORM)
         if pof_ts_col and pof_ts_col in processed_data.columns and 'Site' in processed_data.columns:
-            # Filter for valid POF events and group by site and month
             monthly_counts = processed_data.dropna(subset=[pof_ts_col]).groupby(['Site', 'Submission_Month']).size().reset_index(name='Count')
-            # Calculate the average of the monthly counts for each site
             avg_counts = monthly_counts.groupby('Site')['Count'].mean().round(0).astype(int).to_dict()
             avg_monthly_pof_per_site = avg_counts
 
-        # 2. Prepare the DataFrame for the data_editor
         site_caps_data_list = []
         for site_name in site_metrics['Site'].unique():
             site_caps_data_list.append({
                 "Site": site_name,
                 "Historical Avg. Monthly POF": avg_monthly_pof_per_site.get(site_name, 0),
-                "Monthly POF Cap": np.nan # Use numpy NaN for an empty number cell
+                "Monthly POF Cap": np.nan
             })
         
-        # 3. Create the data_editor with the pre-calculated averages
         edited_caps_df = st.data_editor(
             pd.DataFrame(site_caps_data_list),
             column_config={
@@ -153,11 +145,9 @@ with st.expander("Optional Site Configurations"):
         for _, row in edited_caps_df.iterrows():
             if pd.notna(row['Monthly POF Cap']):
                 site_caps[row['Site']] = int(row['Monthly POF Cap'])
-        # --- END OF CORRECTED BLOCK ---
     else:
         st.info("No site data available to configure.")
 
-# --- EXECUTION LOGIC ---
 if st.button("🚀 Generate Auto Forecast", type="primary", use_container_width=True):
     with st.spinner("Calculating forecast..."):
         effective_rates, _ = determine_effective_projection_rates(
@@ -177,7 +167,6 @@ if st.button("🚀 Generate Auto Forecast", type="primary", use_container_width=
                 if not monthly_counts.empty:
                     baseline_ql_volume = monthly_counts.nlargest(6).mean()
         
-        # Run primary forecast
         (
             df_primary, site_df_primary, ads_off_primary,
             message_primary, is_unfeasible_primary, actual_icfs_primary
@@ -186,7 +175,7 @@ if st.button("🚀 Generate Auto Forecast", type="primary", use_container_width=
             icf_variation_percent=icf_variation, processed_df=processed_data, ordered_stages=ordered_stages,
             ts_col_map=ts_col_map, effective_projection_conv_rates=effective_rates, avg_overall_lag_days=avg_pof_icf_lag,
             site_metrics_df=site_metrics, projection_horizon_months=proj_horizon, 
-            site_caps_input=site_caps, # Pass the site caps
+            site_caps_input=site_caps,
             site_activity_schedule=site_activity_schedule, site_scoring_weights_for_ai=weights,
             cpql_inflation_factor_pct=cpql_inflation, ql_vol_increase_threshold_pct=ql_vol_threshold,
             run_mode="primary", ai_monthly_ql_capacity_multiplier=ql_capacity_multiplier,
@@ -198,7 +187,6 @@ if st.button("🚀 Generate Auto Forecast", type="primary", use_container_width=
 
         if is_unfeasible_primary:
             st.info("Initial forecast is unfeasible. Running a 'best-case' scenario with an extended LPI date...")
-            # Run best-case scenario
             (
                 df_best, site_df_best, ads_off_best,
                 message_best, is_unfeasible_best, actual_icfs_best
@@ -207,7 +195,7 @@ if st.button("🚀 Generate Auto Forecast", type="primary", use_container_width=
                 icf_variation_percent=icf_variation, processed_df=processed_data, ordered_stages=ordered_stages,
                 ts_col_map=ts_col_map, effective_projection_conv_rates=effective_rates, avg_overall_lag_days=avg_pof_icf_lag,
                 site_metrics_df=site_metrics, projection_horizon_months=proj_horizon, 
-                site_caps_input=site_caps, # Pass the site caps
+                site_caps_input=site_caps,
                 site_activity_schedule=site_activity_schedule, site_scoring_weights_for_ai=weights,
                 cpql_inflation_factor_pct=cpql_inflation, ql_vol_increase_threshold_pct=ql_vol_threshold,
                 run_mode="best_case_extended_lpi", ai_monthly_ql_capacity_multiplier=ql_capacity_multiplier,
