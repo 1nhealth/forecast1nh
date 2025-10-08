@@ -42,7 +42,15 @@ utm_performance_df = st.session_state.enhanced_ad_source_metrics_df
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    
+    # --- THIS IS THE CORRECTED SECTION ---
+    generation_config = genai.GenerationConfig(temperature=0.2)
+    model = genai.GenerativeModel(
+        'gemini-flash-latest',
+        generation_config=generation_config
+    )
+    # --- END OF CORRECTION ---
+
 except Exception as e:
     st.error("Error configuring the AI model. Have you set your GEMINI_API_KEY in Streamlit's secrets?")
     st.exception(e)
@@ -92,11 +100,9 @@ Begin the conversation by introducing yourself and asking the user what they wou
 
 # --- Conversational Chat Logic ---
 if "chat" not in st.session_state:
-    # --- THIS IS THE CORRECTED LINE ---
-    st.session_state.chat = model.start_chat(
-        history=[], 
-        generation_config=genai.GenerationConfig(temperature=0.2)
-    )
+    # The start_chat call is now simplified
+    st.session_state.chat = model.start_chat(history=[])
+    
     # Send the initial system prompt and get the first message
     initial_response = st.session_state.chat.send_message(get_system_prompt())
     st.session_state.messages = [{"role": "assistant", "content": initial_response.text}]
