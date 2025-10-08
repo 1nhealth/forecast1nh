@@ -45,7 +45,7 @@ try:
     
     generation_config = genai.GenerationConfig(temperature=0.2)
     model = genai.GenerativeModel(
-        'gemini-1.5-flash',
+        'gemini-flash-latest',
         generation_config=generation_config
     )
 
