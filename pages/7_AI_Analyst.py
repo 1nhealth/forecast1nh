@@ -57,13 +57,11 @@ except Exception as e:
     st.stop()
 
 # --- System Prompts for the Advanced Agent ---
-@st.cache_data
 def get_df_info(df):
     buffer = StringIO()
     df.info(buf=buffer)
     return buffer.getvalue()
 
-@st.cache_data
 def get_system_prompt():
     site_perf_info = get_df_info(st.session_state.enhanced_site_metrics_df)
     utm_perf_info = get_df_info(st.session_state.enhanced_ad_source_metrics_df)
