@@ -18,17 +18,30 @@ st.set_page_config(
 )
 
 # --- Session State Initialization ---
-### FIX: Create a single list of all keys managed by the data loading process.
-### This makes the reset button easier to manage and maintain.
+
+### FIX: Create a comprehensive list of ALL keys that depend on uploaded data.
+# This now includes both the processed data (ingredients) and the calculated results (cooked meals).
+
+# 1. Keys for raw and processed data
 APP_DATA_KEYS = [
     'data_processed_successfully', 'referral_data_processed', 'funnel_definition',
     'ordered_stages', 'ts_col_map', 'inter_stage_lags',
     'historical_spend_df', 'ad_spend_input_dict',
     'enhanced_site_metrics_df', 'enhanced_ad_source_metrics_df', 'enhanced_ad_combo_metrics_df',
-    'uploaded_file_name' # Add a key to store the uploaded file's name
+    'uploaded_file_name'
 ]
 
-# All scoring weights should also be reset to their defaults.
+# 2. Keys for results calculated on other pages
+APP_RESULT_KEYS = [
+    'ranked_sites_df',
+    'ranked_ad_source_df',
+    'ranked_ad_combo_df',
+    'funnel_analysis_results',
+    'funnel_narrative_data',
+    'funnel_analysis_rates_desc'
+]
+
+# 3. Keys for scoring weights that should be reset to default
 SCORING_WEIGHT_KEYS = [
     'w_site_qual_to_enroll', 'w_site_icf_to_enroll', 'w_site_qual_to_icf',
     'w_site_awaiting_action', 'w_site_avg_time_between_contacts', 'w_site_contact_rate',
@@ -43,12 +56,18 @@ SCORING_WEIGHT_KEYS = [
     'w_ad_avg_time_to_first_action', 'w_ad_generic_sf'
 ]
 
+# Combine all keys that need to be initialized
+ALL_APP_KEYS = APP_DATA_KEYS + APP_RESULT_KEYS + SCORING_WEIGHT_KEYS
+
 default_values = {
     'data_processed_successfully': False,
     'historical_spend_df': pd.DataFrame([
         {'Month (YYYY-MM)': (datetime.now() - pd.DateOffset(months=2)).strftime('%Y-%m'), 'Historical Spend': 45000.0},
         {'Month (YYYY-MM)': (datetime.now() - pd.DateOffset(months=1)).strftime('%Y-%m'), 'Historical Spend': 60000.0}
     ]),
+    'ranked_sites_df': pd.DataFrame(), # Initialize result DFs as empty
+    'ranked_ad_source_df': pd.DataFrame(),
+    'ranked_ad_combo_df': pd.DataFrame(),
     'w_site_qual_to_enroll': 10, 'w_site_icf_to_enroll': 10, 'w_site_qual_to_icf': 20,
     'w_site_awaiting_action': 5, 'w_site_avg_time_between_contacts': 10, 'w_site_contact_rate': 10,
     'w_site_sts_to_icf': 15, 'w_site_sts_to_enr': 20, 'w_site_sts_to_lost': 5, 'w_site_sts_appt': 15,
@@ -61,9 +80,10 @@ default_values = {
 }
 
 # Initialize session state for all keys if they don't exist
-for key in APP_DATA_KEYS + SCORING_WEIGHT_KEYS:
+for key in ALL_APP_KEYS:
     if key not in st.session_state:
-        st.session_state[key] = default_values.get(key) # Uses None if no default is specified
+        st.session_state[key] = default_values.get(key)
+
 
 # --- Sidebar ---
 with st.sidebar:
@@ -112,17 +132,21 @@ with st.sidebar:
 st.title("📊 Recruitment Forecasting Tool")
 st.header("Home & Data Setup")
 
-### FIX: Add the "Clear Data & Reset" button. This is the core of the user-initiated reset.
+### FIX: Update the reset button to clear ALL data and result keys.
 if st.button("🗑️ Clear Data & Start New Analysis", type="secondary"):
-    # Clear all data-related keys
-    for key in APP_DATA_KEYS:
+    # Clear all data-related keys AND all result keys
+    for key in APP_DATA_KEYS + APP_RESULT_KEYS:
         if key in st.session_state:
             del st.session_state[key]
+            
     # Reset all scoring weights to their defaults
     for key in SCORING_WEIGHT_KEYS:
         st.session_state[key] = default_values.get(key)
         
     st.success("All data and settings have been reset. You can now upload a new dataset.")
+    # Add a small delay for the user to see the message before the full rerun
+    import time
+    time.sleep(1) 
     st.rerun()
 
 st.divider()
@@ -131,7 +155,7 @@ st.divider()
 if st.session_state.data_processed_successfully:
     st.success(f"Data from **{st.session_state.uploaded_file_name}** is loaded and ready.")
     st.info("👈 Please select an analysis page from the sidebar to view the results.")
-    st.balloons()
+    st.toast("Data cleared!")
 
 else:
     # This block runs only if no data has been loaded in the current session.
