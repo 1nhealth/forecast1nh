@@ -38,7 +38,9 @@ APP_RESULT_KEYS = [
     'ranked_ad_combo_df',
     'funnel_analysis_results',
     'funnel_narrative_data',
-    'funnel_analysis_rates_desc'
+    'funnel_analysis_rates_desc',
+    'chat',
+    'messages' 
 ]
 
 # 3. Keys for scoring weights that should be reset to default
@@ -148,6 +150,7 @@ if st.button("🗑️ Clear Data & Start New Analysis", type="secondary"):
     import time
     time.sleep(1) 
     st.rerun()
+    st.toast("✅ Data Cleared!")
 
 st.divider()
 
@@ -155,7 +158,7 @@ st.divider()
 if st.session_state.data_processed_successfully:
     st.success(f"Data from **{st.session_state.uploaded_file_name}** is loaded and ready.")
     st.info("👈 Please select an analysis page from the sidebar to view the results.")
-    st.toast("Data cleared!")
+    st.toast("🚀 Data Ready!")
 
 else:
     # This block runs only if no data has been loaded in the current session.
