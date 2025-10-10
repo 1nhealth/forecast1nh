@@ -146,11 +146,11 @@ if st.button("🗑️ Clear Data & Start New Analysis", type="secondary"):
         st.session_state[key] = default_values.get(key)
         
     st.success("All data and settings have been reset. You can now upload a new dataset.")
+    st.toast("✅ Data Cleared!")
     # Add a small delay for the user to see the message before the full rerun
     import time
     time.sleep(1) 
     st.rerun()
-    st.toast("✅ Data Cleared!")
 
 st.divider()
 
