@@ -42,7 +42,6 @@ def get_stage_timestamps(row, parsed_stage_history_col, parsed_status_history_co
 
     return pd.Series(timestamps, dtype='datetime64[ns]')
 
-@st.cache_data
 def preprocess_referral_data(_df_raw, funnel_def, ordered_stages, ts_col_map):
     if _df_raw is None or funnel_def is None or ordered_stages is None or ts_col_map is None: return None
 

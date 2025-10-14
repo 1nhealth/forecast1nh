@@ -6,7 +6,6 @@ import re
 from datetime import datetime
 
 # In parsing.py
-@st.cache_data
 def parse_funnel_definition(uploaded_file):
     """
     Parses the funnel definition from an uploaded file, handling both CSV and TSV.

@@ -132,7 +132,6 @@ def determine_effective_projection_rates(_processed_df, ordered_stages, ts_col_m
         if sidebar_display_area: sidebar_display_area.error(f"Error calculating rolling rates: {e}"); sidebar_display_area.exception(e)
         return manual_rates_sidebar, "Manual (Error in Rolling Calc)"
 
-@st.cache_data
 def calculate_projections(_processed_df, ordered_stages, ts_col_map, projection_inputs):
     default_return_tuple = pd.DataFrame(), np.nan, "N/A", "N/A", pd.DataFrame(), "N/A"
     if _processed_df is None or _processed_df.empty: return default_return_tuple
@@ -857,7 +856,6 @@ def calculate_ai_forecast_core(
         elif run_mode == "best_case_extended_lpi": st.session_state.ai_gen_df_debug_best_case = ai_gen_df.copy(); st.session_state.ai_results_df_debug_best_case = ai_results_df.copy()
     return ai_results_df_final_display_val, ai_site_proj_df, ads_off_date_str_calc_val, feasibility_msg_final_display, is_unfeasible_this_run, final_achieved_icfs_landed_run
 
-@st.cache_data
 def calculate_pipeline_projection(
     _processed_df, ordered_stages, ts_col_map, inter_stage_lags,
     conversion_rates, lag_assumption_model
