@@ -38,9 +38,7 @@ APP_RESULT_KEYS = [
     'ranked_ad_combo_df',
     'funnel_analysis_results',
     'funnel_narrative_data',
-    'funnel_analysis_rates_desc',
-    'chat',
-    'messages' 
+    'funnel_analysis_rates_desc'
 ]
 
 # 3. Keys for scoring weights that should be reset to default
@@ -56,6 +54,12 @@ SCORING_WEIGHT_KEYS = [
     'w_ad_sts_to_enr', 'w_ad_sts_to_lost', 'w_ad_icf_to_lost', 'w_ad_lag_sts_appt', 
     'w_ad_lag_sts_icf', 'w_ad_lag_sts_enr', 'w_ad_qual_to_sts', 'w_ad_qual_to_appt',
     'w_ad_avg_time_to_first_action', 'w_ad_generic_sf'
+]
+
+# This state is only used for the reset button. It will NOT be initialized globally.
+PAGE_UI_STATE_KEYS = [
+    'chat',
+    'messages'
 ]
 
 # Combine all keys that need to be initialized
@@ -136,8 +140,8 @@ st.header("Home & Data Setup")
 
 ### FIX: Update the reset button to clear ALL data and result keys.
 if st.button("🗑️ Clear Data & Start New Analysis", type="secondary"):
-    # Clear all data-related keys AND all result keys
-    for key in APP_DATA_KEYS + APP_RESULT_KEYS:
+    # Clear all data, result, AND page-specific UI keys
+    for key in APP_DATA_KEYS + APP_RESULT_KEYS + PAGE_UI_STATE_KEYS:
         if key in st.session_state:
             del st.session_state[key]
             
@@ -145,9 +149,7 @@ if st.button("🗑️ Clear Data & Start New Analysis", type="secondary"):
     for key in SCORING_WEIGHT_KEYS:
         st.session_state[key] = default_values.get(key)
         
-    st.success("All data and settings have been reset. You can now upload a new dataset.")
-    st.toast("✅ Data Cleared!")
-    # Add a small delay for the user to see the message before the full rerun
+    st.toast("Data and settings have been reset!", icon="✅")
     import time
     time.sleep(1) 
     st.rerun()
