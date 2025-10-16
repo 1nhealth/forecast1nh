@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 
-# Import the new, more powerful lag calculation function
+# Correctly import the generic function from helpers
 from helpers import calculate_avg_lag_generic
 
 def calculate_heatmap_data(df, ts_col_map, status_history_col):
@@ -30,7 +30,6 @@ def calculate_heatmap_data(df, ts_col_map, status_history_col):
 
             end_window = sts_timestamp if pd.notna(sts_timestamp) else pd.Timestamp.max
             
-            # Collect timestamps of ALL actions during the pre-screening window
             for _, event_dt in history:
                 if psa_timestamp < event_dt < end_window:
                     action_timestamps.append(event_dt)
@@ -54,19 +53,22 @@ def calculate_heatmap_data(df, ts_col_map, status_history_col):
 
 def calculate_average_time_metrics(df, ts_col_map, status_history_col):
     """
-    Calculates key average AND median time metrics for PC performance.
+    Calculates key average time metrics for PC performance.
     "Time Between Contacts" now means time between ANY pre-screening actions.
     """
     if df is None or df.empty or ts_col_map is None:
-        return {"avg_time_to_first_contact": np.nan, "median_time_to_first_contact": np.nan, 
-                "avg_time_between_contacts": np.nan, "avg_time_new_to_sts": np.nan, "median_time_new_to_sts": np.nan}
+        return {
+            "avg_time_to_first_contact": np.nan,
+            "avg_time_between_contacts": np.nan,
+            "avg_time_new_to_sts": np.nan
+        }
 
     pof_ts_col = ts_col_map.get("Passed Online Form")
     psa_ts_col = ts_col_map.get("Pre-Screening Activities")
     sts_ts_col = ts_col_map.get("Sent To Site")
 
-    ttfc_stats = calculate_lag_stats(df, pof_ts_col, psa_ts_col)
-    new_to_sts_stats = calculate_lag_stats(df, pof_ts_col, sts_ts_col)
+    avg_ttfc = calculate_avg_lag_generic(df, pof_ts_col, psa_ts_col)
+    avg_new_to_sts = calculate_avg_lag_generic(df, pof_ts_col, sts_ts_col)
 
     all_action_deltas = []
     if status_history_col in df.columns and psa_ts_col in df.columns:
@@ -80,27 +82,22 @@ def calculate_average_time_metrics(df, ts_col_map, status_history_col):
             
             end_window = sts_timestamp if pd.notna(sts_timestamp) else pd.Timestamp.max
 
-            # Get the timestamps of ALL actions taken during pre-screening
             action_timestamps = sorted([
                 event_dt for _, event_dt in history 
                 if psa_timestamp < event_dt < end_window
             ])
-
-            # Also include the initial PSA timestamp as the first "action"
+            
             all_timestamps = [psa_timestamp] + action_timestamps
             
-            # If there's more than one action, calculate the time differences
             if len(all_timestamps) > 1:
                 all_action_deltas.extend(np.diff(all_timestamps))
 
     avg_between_actions = pd.Series(all_action_deltas).mean().total_seconds() / (60 * 60 * 24) if all_action_deltas else np.nan
     
     return {
-        "avg_time_to_first_contact": ttfc_stats['mean'],
-        "median_time_to_first_contact": ttfc_stats['median'],
+        "avg_time_to_first_contact": avg_ttfc,
         "avg_time_between_contacts": avg_between_actions,
-        "avg_time_new_to_sts": new_to_sts_stats['mean'],
-        "median_time_new_to_sts": new_to_sts_stats['median']
+        "avg_time_new_to_sts": avg_new_to_sts
     }
 
 def calculate_top_status_flows(df, ts_col_map, status_history_col, min_data_threshold=5):
@@ -182,10 +179,8 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
         if pd.isna(psa_timestamp) or not isinstance(history, list):
             return 0
         
-        # The end of our window is when the lead is sent to site, or forever if it hasn't been yet.
         end_window = sts_timestamp if pd.notna(sts_timestamp) else pd.Timestamp.max
 
-        # Count every event that occurs AFTER the Pre-Screening Activities timestamp but BEFORE the end_window
         action_count = sum(1 for _, event_dt in history if psa_timestamp < event_dt < end_window)
         
         return action_count
@@ -230,7 +225,7 @@ def calculate_performance_over_time(df, ts_col_map):
     if not all(col in df.columns for col in [pof_ts_col, psa_ts_col, sts_ts_col]):
         return pd.DataFrame()
 
-    avg_pof_to_sts_lag = calculate_lag_stats(df, pof_ts_col, sts_ts_col)['mean']
+    avg_pof_to_sts_lag = calculate_avg_lag_generic(df, pof_ts_col, sts_ts_col)
     maturity_days = (avg_pof_to_sts_lag * 1.5) if pd.notna(avg_pof_to_sts_lag) else 30
 
     time_df = df.set_index('Submitted On_DT')
@@ -243,9 +238,9 @@ def calculate_performance_over_time(df, ts_col_map):
             week_df[week_df.index + pd.Timedelta(days=maturity_days) < pd.Timestamp.now()]
             .pipe(lambda mature_df: mature_df[sts_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0)
         ),
-        'Average Time to First Contact (Days)': calculate_lag_stats(
+        'Average Time to First Contact (Days)': calculate_avg_lag_generic(
             week_df, pof_ts_col, psa_ts_col
-        )['mean'],
+        ),
         'Average Sent to Site per Day': (
             week_df[sts_ts_col].notna().sum() / 7
         ),
@@ -266,23 +261,18 @@ def analyze_heatmap_efficiency(contact_heatmap, sts_heatmap):
     if contact_heatmap.empty or sts_heatmap.empty or contact_heatmap.sum().sum() == 0:
         return {}
 
-    # Reshape data for analysis
     contacts_long = contact_heatmap.stack().reset_index()
     contacts_long.columns = ['Day', 'Hour', 'Contacts']
     sts_long = sts_heatmap.stack().reset_index()
     sts_long.columns = ['Day', 'Hour', 'StS']
     
-    # Merge the two data sources
     merged_df = pd.merge(contacts_long, sts_long, on=['Day', 'Hour'])
     
-    # Calculate efficiency (StS per Contact Attempt)
     merged_df['Efficiency'] = (merged_df['StS'] / merged_df['Contacts']).replace([np.inf, -np.inf], 0).fillna(0)
     
-    # Define thresholds using quantiles for robustness
     high_contacts_threshold = merged_df['Contacts'].quantile(0.90)
     high_sts_threshold = merged_df['StS'].quantile(0.90)
     
-    # Ensure there's variance in efficiency before calculating quantile
     if merged_df[merged_df['Contacts'] > 0]['Efficiency'].nunique() > 1:
         high_efficiency_threshold = merged_df[merged_df['Contacts'] > 0]['Efficiency'].quantile(0.90)
         low_efficiency_threshold = merged_df[merged_df['Contacts'] > high_contacts_threshold]['Efficiency'].quantile(0.25)
@@ -290,33 +280,30 @@ def analyze_heatmap_efficiency(contact_heatmap, sts_heatmap):
         high_efficiency_threshold = 0
         low_efficiency_threshold = 0
 
-    # Filter for each category
     volume_best_df = merged_df[
         (merged_df['Contacts'] >= high_contacts_threshold) & 
         (merged_df['StS'] >= high_sts_threshold) &
-        (merged_df['Contacts'] > 1) # Ensure some minimum activity
+        (merged_df['Contacts'] > 1)
     ]
     
     most_efficient_df = merged_df[
         (merged_df['Efficiency'] >= high_efficiency_threshold) & 
-        (merged_df['StS'] >= 1) & # Must have at least one success
+        (merged_df['StS'] >= 1) &
         (merged_df['Efficiency'] > 0)
     ].sort_values(by='Efficiency', ascending=False)
     
     least_efficient_df = merged_df[
         (merged_df['Contacts'] >= high_contacts_threshold) & 
         (merged_df['Efficiency'] <= low_efficiency_threshold) &
-        (merged_df['Efficiency'] < high_efficiency_threshold) # Must be less than the best
+        (merged_df['Efficiency'] < high_efficiency_threshold)
     ].sort_values(by='Efficiency', ascending=True)
 
-    # Helper to format the output strings
     def format_hour(hour):
         if hour == 0: return "12 AM"
         if hour == 12: return "12 PM"
         if hour < 12: return f"{hour} AM"
         return f"{hour-12} PM"
 
-    # Extract top N time slots for each category
     results = {
         "volume_best": [f"{row.Day}, {format_hour(row.Hour)}" for _, row in volume_best_df.head(5).iterrows()],
         "most_efficient": [f"{row.Day}, {format_hour(row.Hour)}" for _, row in most_efficient_df.head(5).iterrows()],
