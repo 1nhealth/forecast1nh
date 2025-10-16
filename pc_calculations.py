@@ -4,7 +4,7 @@ import numpy as np
 from collections import Counter
 
 # Import the new, more powerful lag calculation function
-from calculations import calculate_lag_stats
+from helpers import calculate_avg_lag_generic
 
 def calculate_heatmap_data(df, ts_col_map, status_history_col):
     """

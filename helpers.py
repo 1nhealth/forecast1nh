@@ -1,6 +1,7 @@
 # helpers.py
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 def format_performance_df(df: pd.DataFrame) -> pd.DataFrame:
     """Applies standard formatting to a performance DataFrame for display."""
@@ -50,3 +51,19 @@ def format_days_to_dhm(days_float):
     minutes = int(total_seconds // 60)
     
     return f"{days} d {hours} h {minutes} m"
+
+def calculate_avg_lag_generic(df, col_from, col_to):
+    if col_from is None or col_to is None or col_from not in df.columns or col_to not in df.columns:
+        return np.nan
+
+    if not all([pd.api.types.is_datetime64_any_dtype(df[col_from]),
+                pd.api.types.is_datetime64_any_dtype(df[col_to])]):
+        return np.nan
+
+    valid_df = df.dropna(subset=[col_from, col_to])
+    if valid_df.empty: return np.nan
+
+    diff = pd.to_datetime(valid_df[col_to]) - pd.to_datetime(valid_df[col_from])
+    diff_positive = diff[diff >= pd.Timedelta(days=0)]
+
+    return diff_positive.mean().total_seconds() / (60 * 60 * 24) if not diff_positive.empty else np.nan
