@@ -199,7 +199,7 @@ def calculate_contact_attempt_effectiveness(df, ts_col_map, status_history_col):
 
     result['StS_Rate'] = (result['Total_StS'] / result['Referral_Count'].replace(0, np.nan))
     result['ICF_Rate'] = (result['Total_ICF'] / result['Referral_Count'].replace(0, np.nan))
-    result['Enrollment_Rate'] = (result['Enrollment_Rate'] / result['Referral_Count'].replace(0, np.nan))
+    result['Enrollment_Rate'] = (result['Total_Enrolled'] / result['Referral_Count'].replace(0, np.nan))
     
     result.reset_index(inplace=True)
     
