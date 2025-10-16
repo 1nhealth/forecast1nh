@@ -14,6 +14,7 @@ from calculations import (
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import plotly.express as px
+from helpers import is_contact_attempt
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -24,6 +25,36 @@ with st.sidebar:
     st.logo("assets/logo.png", link="https://1nhealth.com")
 
 st.title("🏆 Site Performance Dashboard")
+
+# --- NEW: Smart Configuration for Contact Statuses ---
+with st.expander("Configure 'Contact Attempt' Statuses"):
+    # Gracefully handle the case where data isn't loaded yet
+    if st.session_state.get('data_processed_successfully', False):
+        # Get all unique statuses from the parsed history column
+        all_statuses = set()
+        histories = st.session_state.referral_data_processed['Parsed_Lead_Status_History'].dropna()
+        for history_list in histories:
+            for event_name, _ in history_list:
+                all_statuses.add(event_name)
+        
+        sorted_statuses = sorted(list(all_statuses))
+        
+        # Use our heuristic to create a smart default list
+        smart_defaults = [status for status in sorted_statuses if is_contact_attempt(status)]
+        
+        st.info("The app has automatically selected statuses that appear to be contact attempts. You can add or remove from this list to refine the analysis below.")
+        
+        # The multiselect widget with smart defaults
+        selected_contact_statuses = st.multiselect(
+            label="Select statuses to be treated as a 'Contact Attempt'",
+            options=sorted_statuses,
+            default=smart_defaults,
+            key="contact_status_selector"
+        )
+    else:
+        st.warning("Upload data on the Home page to configure statuses.")
+        selected_contact_statuses = [] # Default to empty list if no data
+# --- END of new section ---
 
 if not st.session_state.get('data_processed_successfully', False):
     st.warning("Please upload and process your data on the 'Home & Data Setup' page first.")
@@ -48,6 +79,7 @@ with st.container(border=True):
         st.session_state.ts_col_map,
         "Parsed_Lead_Status_History",
         selected_site
+        contact_status_list=selected_contact_statuses
     )
     lost_reasons = calculate_lost_reasons_after_sts(
         st.session_state.referral_data_processed,
@@ -102,7 +134,7 @@ with st.container(border=True):
     st.divider()
     st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
     
-    site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, "Parsed_Lead_Status_History", selected_site)
+    site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, "Parsed_Lead_Status_History", selected_site, contact_status_list=selected_contact_statuses)
     if site_contact_effectiveness_df.empty or site_contact_effectiveness_df['Total Referrals'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze contact attempt effectiveness.")
     else:
