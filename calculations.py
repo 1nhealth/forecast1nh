@@ -106,19 +106,42 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
     sts_ts_col = ts_col_map.get("Sent To Site")
     appt_ts_col = ts_col_map.get("Appointment Scheduled")
 
+    # This part remains the same: identify all potential future STAGE timestamps
     all_ts_cols_after_sts = [v for k, v in ts_col_map.items() if k != "Sent To Site" and v in site_df.columns]
     
+    ### FIX: The core logic is updated in this helper function ###
     def find_first_action_after_sts(row):
         sts_time = row[sts_ts_col]
         if pd.isna(sts_time):
             return pd.NaT
-        future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
-        return future_events.min() if not future_events.empty else pd.NaT
 
+        # 1. Find the earliest future event from the main STAGE timestamp columns (original logic)
+        future_stage_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
+        earliest_stage_event = future_stage_events.min() if not future_stage_events.empty else pd.NaT
+
+        # 2. Find the earliest future event from the granular STATUS HISTORY (new logic)
+        history = row.get(status_history_col, [])
+        earliest_history_event = pd.NaT
+        if isinstance(history, list) and history:
+            # Find all timestamps in the history that are after the sts_time
+            future_history_events = [event_dt for event_name, event_dt in history if pd.notna(event_dt) and event_dt > sts_time]
+            if future_history_events:
+                earliest_history_event = min(future_history_events)
+
+        # 3. Compare the results from both sources and pick the true earliest event
+        # The pd.Series(...).min() method neatly handles NaT (Not a Time) values.
+        overall_earliest_event = pd.Series([earliest_stage_event, earliest_history_event]).min()
+        
+        return overall_earliest_event
+
+    # Apply the new, smarter function to every row
     first_actions = site_df.apply(find_first_action_after_sts, axis=1)
+    
+    # The rest of the calculation remains the same
     time_to_first_action = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / (60*60*24)
     avg_sts_to_first_action = time_to_first_action.mean()
 
+    # --- The logic for the other two KPIs remains unchanged ---
     all_contact_deltas = []
     if status_history_col in site_df.columns:
         for _, row in site_df.iterrows():
@@ -148,7 +171,6 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         'avg_time_between_site_contacts': avg_between_site_contacts,
         'avg_sts_to_appt': avg_sts_to_appt
     }
-
 def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     if df is None or df.empty:
         return pd.DataFrame()
