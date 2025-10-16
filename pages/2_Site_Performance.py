@@ -8,7 +8,8 @@ from calculations import (
     calculate_site_ttfc_effectiveness, 
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
-    calculate_lost_reasons_after_sts
+    calculate_lost_reasons_after_sts,
+    calculate_stale_referrals
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -55,8 +56,13 @@ with st.container(border=True):
         st.session_state.funnel_definition,
         selected_site
     )
-
-    kpi_cols = st.columns(3)
+    stale_referrals_count = calculate_stale_referrals(
+        st.session_state.referral_data_processed,
+        st.session_state.ts_col_map,
+        "Parsed_Lead_Status_History",
+        selected_site
+    )
+    kpi_cols = st.columns(4)
     kpi_cols[0].metric(
         label="Avg. Time to First Site Action",
         value=format_days_to_dhm(site_kpis.get('avg_sts_to_first_action')),
@@ -71,6 +77,11 @@ with st.container(border=True):
         label="Avg. Time StS to Appt. Sched.",
         value=format_days_to_dhm(site_kpis.get('avg_sts_to_appt')),
         help="The average total time from when a lead is 'Sent to Site' until an appointment is successfully scheduled."
+    )
+    kpi_cols[3].metric(
+        label="Referrals Awaiting Action > 7 Days",
+        value=f"{stale_referrals_count}",
+        help="Count of active referrals sent to the site more than 7 days ago with NO follow-up action yet."
     )
     
     st.divider()
