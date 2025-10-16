@@ -14,7 +14,6 @@ def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map
     for i in range(len(ordered_stages) - 1):
         stage_from, stage_to = ordered_stages[i], ordered_stages[i+1]
         
-        # --- FIX: Corrected 'to_stage' to 'stage_to' in both places ---
         ts_col_from, ts_col_to = ts_col_map.get(stage_from), ts_col_map.get(stage_to)
         
         avg_lag = calculate_avg_lag_generic(_processed_df, ts_col_from, ts_col_to)
@@ -286,6 +285,10 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
     analysis_df = analysis_df.dropna(subset=[sts_ts_col]).copy()
     if analysis_df.empty:
         return pd.DataFrame()
+        
+    # FIX IS HERE: Handle the default value in the PARENT function's scope.
+    if contact_status_list is None:
+        contact_status_list = []
 
     def count_logged_site_attempts(row):
         sts_time = row[sts_ts_col]
@@ -295,9 +298,6 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
 
         if not isinstance(history, list):
             return 0
-
-        if contact_status_list is None:
-            contact_status_list = []
 
         end_window = pd.Timestamp.max
         if pd.notna(appt_time) and pd.notna(lost_time):
@@ -479,9 +479,7 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
             awaiting_action_count = len(sts_df[~sts_df['has_action']])
             metrics['Total Referrals Awaiting First Site Action'] = awaiting_action_count
             
-            # --- FIX: REMOVED DYNAMIC METRICS FROM THIS STATIC CALCULATION ---
-            # We will only calculate static metrics here. The dynamic ones are calculated on the page itself.
-            ops_kpis_static = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name, contact_status_list=[]) # Pass empty list
+            ops_kpis_static = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name, contact_status_list=[])
             metrics['Average time to first site action'] = ops_kpis_static.get('avg_sts_to_first_action')
             
             metrics['StS Contact Rate %'] = (sts_count - awaiting_action_count) / sts_count if sts_count > 0 else 0.0
