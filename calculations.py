@@ -479,13 +479,10 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
             awaiting_action_count = len(sts_df[~sts_df['has_action']])
             metrics['Total Referrals Awaiting First Site Action'] = awaiting_action_count
             
-            ops_kpis = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name)
-            metrics['Avg. Time Between Site Contacts'] = ops_kpis.get('avg_time_between_site_contacts')
-            metrics['Average time to first site action'] = ops_kpis.get('avg_sts_to_first_action')
-            
-            contact_attempts_df = calculate_site_contact_attempt_effectiveness(group_df, ts_col_map, status_history_col, site_name)
-            total_attempts = (contact_attempts_df['Number of Site Attempts'] * contact_attempts_df['Total Referrals']).sum()
-            metrics['Avg number of site contact attempts per referral'] = total_attempts / sts_count if sts_count > 0 else 0.0
+            # --- FIX: REMOVED DYNAMIC METRICS FROM THIS STATIC CALCULATION ---
+            # We will only calculate static metrics here. The dynamic ones are calculated on the page itself.
+            ops_kpis_static = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name, contact_status_list=[]) # Pass empty list
+            metrics['Average time to first site action'] = ops_kpis_static.get('avg_sts_to_first_action')
             
             metrics['StS Contact Rate %'] = (sts_count - awaiting_action_count) / sts_count if sts_count > 0 else 0.0
         
