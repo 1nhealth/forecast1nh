@@ -16,7 +16,6 @@ def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map
         ts_col_from, ts_col_to = ts_col_map.get(stage_from), ts_col_map.get(stage_to)
         
         avg_lag = calculate_avg_lag_generic(_processed_df, ts_col_from, ts_col_to)
-        # Storing the single value, not a dictionary, as median is not implemented
         inter_stage_lags[f"{stage_from} -> {to_stage}"] = avg_lag
         
     return inter_stage_lags
@@ -123,6 +122,7 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         if contact_status_list is None:
             contact_status_list = []
 
+        # --- THIS BLOCK HAS THE CORRECTED INDENTATION ---
         for _, row in site_df.iterrows():
             sts_time = row[sts_ts_col]
             appt_time = row[appt_ts_col]
@@ -152,10 +152,6 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
     }
 
 def calculate_stale_referrals(df, ts_col_map, status_history_col, selected_site="Overall", stale_threshold_days=7):
-    """
-    Counts the number of referrals that have not had any action since being sent to a site
-    and are older than a given threshold.
-    """
     if df is None or df.empty:
         return 0
 
