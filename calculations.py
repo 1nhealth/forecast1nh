@@ -3,8 +3,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from constants import * # Import all stage names
-from helpers import calculate_avg_lag_generic
+from constants import *
+# Correctly import the generic helper functions
+from helpers import calculate_avg_lag_generic, is_contact_attempt
 
 def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map):
     if _processed_df is None or _processed_df.empty or not ordered_stages or not ts_col_map:
@@ -15,7 +16,8 @@ def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map
         ts_col_from, ts_col_to = ts_col_map.get(stage_from), ts_col_map.get(stage_to)
         
         avg_lag = calculate_avg_lag_generic(_processed_df, ts_col_from, ts_col_to)
-        inter_stage_lags[f"{stage_from} -> {stage_to}"] = avg_lag
+        # Storing the single value, not a dictionary, as median is not implemented
+        inter_stage_lags[f"{stage_from} -> {to_stage}"] = avg_lag
         
     return inter_stage_lags
 
@@ -73,7 +75,7 @@ def calculate_proforma_metrics(_processed_df, ordered_stages, ts_col_map, monthl
     return proforma_metrics
 
 
-def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected_site="Overall"):
+def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected_site="Overall", contact_status_list=None):
     if df is None or df.empty:
         return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
 
@@ -90,44 +92,37 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
     sts_ts_col = ts_col_map.get("Sent To Site")
     appt_ts_col = ts_col_map.get("Appointment Scheduled")
 
-    # This part remains the same: identify all potential future STAGE timestamps
     all_ts_cols_after_sts = [v for k, v in ts_col_map.items() if k != "Sent To Site" and v in site_df.columns]
     
-    ### FIX: The core logic is updated in this helper function ###
     def find_first_action_after_sts(row):
         sts_time = row[sts_ts_col]
         if pd.isna(sts_time):
             return pd.NaT
 
-        # 1. Find the earliest future event from the main STAGE timestamp columns (original logic)
         future_stage_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
         earliest_stage_event = future_stage_events.min() if not future_stage_events.empty else pd.NaT
 
-        # 2. Find the earliest future event from the granular STATUS HISTORY (new logic)
         history = row.get(status_history_col, [])
         earliest_history_event = pd.NaT
         if isinstance(history, list) and history:
-            # Find all timestamps in the history that are after the sts_time
             future_history_events = [event_dt for event_name, event_dt in history if pd.notna(event_dt) and event_dt > sts_time]
             if future_history_events:
                 earliest_history_event = min(future_history_events)
 
-        # 3. Compare the results from both sources and pick the true earliest event
-        # The pd.Series(...).min() method neatly handles NaT (Not a Time) values.
         overall_earliest_event = pd.Series([earliest_stage_event, earliest_history_event]).min()
         
         return overall_earliest_event
 
-    # Apply the new, smarter function to every row
     first_actions = site_df.apply(find_first_action_after_sts, axis=1)
     
-    # The rest of the calculation remains the same
     time_to_first_action = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / (60*60*24)
     avg_sts_to_first_action = time_to_first_action.mean()
 
-    # --- The logic for the other two KPIs remains unchanged ---
     all_contact_deltas = []
     if status_history_col in site_df.columns:
+        if contact_status_list is None:
+            contact_status_list = []
+
         for _, row in site_df.iterrows():
             sts_time = row[sts_ts_col]
             appt_time = row[appt_ts_col]
@@ -141,7 +136,7 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
 
             site_attempt_timestamps = sorted([
                 event_dt for event_name, event_dt in history 
-                if "contact attempt" in event_name.lower() and event_dt > start_window and event_dt < end_window
+                if event_name in contact_status_list and event_dt > start_window and event_dt < end_window
             ])
             
             if len(site_attempt_timestamps) > 1:
@@ -174,10 +169,8 @@ def calculate_stale_referrals(df, ts_col_map, status_history_col, selected_site=
     if site_df.empty or not sts_ts_col or sts_ts_col not in site_df.columns:
         return 0
 
-    # Filter for leads that have been sent to the site
     site_df.dropna(subset=[sts_ts_col], inplace=True)
     
-    # Exclude leads that have reached a terminal stage (e.g., Enrolled, Lost, Screen Failed)
     terminal_cols = [ts_col_map.get(stage) for stage in ["Enrolled", "Lost", "Screen Failed"] if ts_col_map.get(stage) in site_df.columns]
     for col in terminal_cols:
         site_df = site_df[site_df[col].isna()]
@@ -189,11 +182,9 @@ def calculate_stale_referrals(df, ts_col_map, status_history_col, selected_site=
 
     def has_action_after_sts(row):
         sts_time = row[sts_ts_col]
-        # 1. Check for any action in the main funnel stage timestamps
         for col in all_ts_cols_after_sts:
             if pd.notna(row[col]) and row[col] > sts_time:
                 return True
-        # 2. Check for any action in the detailed status history
         history = row.get(status_history_col, [])
         if isinstance(history, list):
             for _, event_dt in history:
@@ -203,10 +194,8 @@ def calculate_stale_referrals(df, ts_col_map, status_history_col, selected_site=
 
     site_df['has_action'] = site_df.apply(has_action_after_sts, axis=1)
 
-    # Filter for referrals that have NO action
     no_action_df = site_df[~site_df['has_action']].copy()
 
-    # From those, find the ones where the StS timestamp is older than our threshold
     stale_cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=stale_threshold_days)
     stale_count = no_action_df[no_action_df[sts_ts_col] < stale_cutoff_date].shape[0]
     
@@ -277,7 +266,7 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     
     return result
 
-def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall"):
+def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall", contact_status_list=None):
     if df is None or df.empty or not ts_col_map or status_history_col not in df.columns:
         return pd.DataFrame()
 
@@ -310,6 +299,9 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
         if not isinstance(history, list):
             return 0
 
+        if contact_status_list is None:
+            contact_status_list = []
+
         end_window = pd.Timestamp.max
         if pd.notna(appt_time) and pd.notna(lost_time):
             end_window = min(appt_time, lost_time)
@@ -320,7 +312,7 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
 
         attempt_count = 0
         for event_name, event_dt in history:
-            if "contact attempt" in event_name.lower():
+            if event_name in contact_status_list:
                 if sts_time < event_dt < end_window:
                     attempt_count += 1
         return attempt_count

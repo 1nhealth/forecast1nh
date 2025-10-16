@@ -67,3 +67,23 @@ def calculate_avg_lag_generic(df, col_from, col_to):
     diff_positive = diff[diff >= pd.Timedelta(days=0)]
 
     return diff_positive.mean().total_seconds() / (60 * 60 * 24) if not diff_positive.empty else np.nan
+
+def is_contact_attempt(status_name):
+    """
+    Uses a heuristic keyword search to determine if a status name represents a patient contact attempt.
+    This is case-insensitive.
+    """
+    if not isinstance(status_name, str):
+        return False
+        
+    # Define the keywords that signify a direct patient contact attempt
+    CONTACT_KEYWORDS = [
+        'contact', 'attempt', 'call', 'called', 
+        'email', 'emailed', 'text', 'sms', 'message sent',
+        'voicemail', 'vm', 'left message', 'lm', 
+        'follow-up', 'outreach', 'spoke to', 'connected'
+    ]
+    
+    # Check if any keyword exists in the status name (converted to lower case)
+    lower_status = status_name.lower()
+    return any(keyword in lower_status for keyword in CONTACT_KEYWORDS)
