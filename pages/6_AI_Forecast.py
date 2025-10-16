@@ -4,11 +4,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# Direct imports from modules in the root directory
+# Direct imports from your project modules
 from forecasting import determine_effective_projection_rates, calculate_ai_forecast_core
-from calculations import calculate_avg_lag_generic
 from constants import *
-from helpers import format_performance_df
+from helpers import calculate_avg_lag_generic, format_performance_df
 
 # --- Page Configuration ---
 st.set_page_config(page_title="AI Forecast", page_icon="🤖", layout="wide")
