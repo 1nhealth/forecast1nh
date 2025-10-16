@@ -140,11 +140,10 @@ with st.container(border=True):
         st.info(f"Not enough data for '{selected_site}' to generate a performance trend graph.")
     else:
         secondary_metric = 'Total Sent to Site per Week'
-        # This logic for metric options and the selectbox remains the same
         primary_metric_options = {
-            'Sent to Site -> Appointment %': ('Sent to Site -> Appointment %', 'Sent to Site -> Appointment %_projected'),
-            'Sent to Site -> ICF %': ('Sent to Site -> ICF %', 'Sent to Site -> ICF %_projected'),
-            'Sent to Site -> Enrollment %': ('Sent to Site -> Enrollment %', 'Sent to Site -> Enrollment %_projected'),
+            'Sent to Site -> Appointment %': ('Sent to Site -> Appointment % (Actual)', 'Sent to Site -> Appointment % (Projected)'),
+            'Sent to Site -> ICF %': ('Sent to Site -> ICF % (Actual)', 'Sent to Site -> ICF % (Projected)'),
+            'Sent to Site -> Enrollment %': ('Sent to Site -> Enrollment % (Actual)', 'Sent to Site -> Enrollment % (Projected)'),
             'Total Appointments per Week': ('Total Appointments per Week', None),
             'Average Time to First Site Action (Days)': ('Average Time to First Site Action (Days)', None),
         }
@@ -153,48 +152,18 @@ with st.container(border=True):
         if available_options:
             primary_metric_display_name = st.selectbox("Select a primary metric to display on the chart:", options=available_options, key=f"site_perf_time_selector_{selected_site.replace(' ', '_')}")
             compare_with_volume = st.toggle(f"Compare with {secondary_metric}", value=True, key=f"site_perf_time_toggle_{selected_site.replace(' ', '_')}")
-            
-            # --- START of new charting logic ---
-            
+            actual_col, projected_col = primary_metric_options[primary_metric_display_name]
             fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-            # PLOT 1: The Selected Site's Metric (or Overall if "Overall" is chosen)
-            if primary_metric_display_name in over_time_df.columns:
-                fig.add_trace(go.Scatter(
-                    x=over_time_df.index, y=over_time_df[primary_metric_display_name], 
-                    name=f"{selected_site} ({primary_metric_display_name})", 
-                    mode='lines+markers', line=dict(color='#53CA97', width=3) # Make the main line thicker
-                ), secondary_y=False)
-
-            # PLOT 2: The Overall Average Benchmark (only if a specific site is selected)
-            benchmark_col = f"{primary_metric_display_name}_overall"
-            if selected_site != "Overall" and benchmark_col in over_time_df.columns:
-                fig.add_trace(go.Scatter(
-                    x=over_time_df.index, y=over_time_df[benchmark_col], 
-                    name="Overall Average", 
-                    mode='lines', line=dict(color='#7991C6', dash='dash') # Dashed line for benchmark
-                ), secondary_y=False)
-
-            # PLOT 3: The Secondary Volume Metric
+            fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name, mode='lines+markers', line=dict(color='#53CA97')), secondary_y=False)
+            if projected_col and projected_col in over_time_df.columns:
+                fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend", mode='lines', line=dict(color='#53CA97', dash='dot'), showlegend=False), secondary_y=False)
             if compare_with_volume and secondary_metric in over_time_df.columns:
-                fig.add_trace(go.Scatter(
-                    x=over_time_df.index, y=over_time_df[secondary_metric], 
-                    name=f"{selected_site} ({secondary_metric})", 
-                    line=dict(dash='dot', color='gray')
-                ), secondary_y=True)
-
-            # Update axes and layout
+                fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')), secondary_y=True)
             fig.update_yaxes(title_text=f"<b>{primary_metric_display_name}</b>", secondary_y=False)
             if compare_with_volume and secondary_metric in over_time_df.columns:
-                fig.update_yaxes(title_text=f"<b>Volume per Week</b>", secondary_y=True, showgrid=False)
-            
-            fig.update_layout(
-                title_text=f"Weekly Trend for {selected_site}: {primary_metric_display_name}",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
+                fig.update_yaxes(title_text=f"<b>{secondary_metric}</b>", secondary_y=True, showgrid=False)
+            fig.update_layout(title_text=f"Weekly Trend for {selected_site}: {primary_metric_display_name}", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
-            
-            # --- END of new charting logic ---
 
 st.divider()
 
