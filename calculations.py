@@ -13,10 +13,12 @@ def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map
     inter_stage_lags = {}
     for i in range(len(ordered_stages) - 1):
         stage_from, stage_to = ordered_stages[i], ordered_stages[i+1]
+        
+        # --- FIX: Corrected 'to_stage' to 'stage_to' in both places ---
         ts_col_from, ts_col_to = ts_col_map.get(stage_from), ts_col_map.get(stage_to)
         
         avg_lag = calculate_avg_lag_generic(_processed_df, ts_col_from, ts_col_to)
-        inter_stage_lags[f"{stage_from} -> {to_stage}"] = avg_lag
+        inter_stage_lags[f"{stage_from} -> {stage_to}"] = avg_lag
         
     return inter_stage_lags
 
@@ -122,7 +124,6 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         if contact_status_list is None:
             contact_status_list = []
 
-        # --- THIS BLOCK HAS THE CORRECTED INDENTATION ---
         for _, row in site_df.iterrows():
             sts_time = row[sts_ts_col]
             appt_time = row[appt_ts_col]
