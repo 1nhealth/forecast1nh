@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 
-# Import the generic lag calculator for reuse
-from calculations import calculate_avg_lag_generic
+# Import the new, more powerful lag calculation function
+from calculations import calculate_lag_stats
 
 def calculate_heatmap_data(df, ts_col_map, status_history_col):
     """
@@ -49,7 +49,8 @@ def calculate_heatmap_data(df, ts_col_map, status_history_col):
         day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         heatmap_grid.index = heatmap_grid.index.map(lambda i: day_names[i])
         return heatmap_grid
-    return aggregate_timestamps(contact_timestamps), aggregate_timestamps(sts_timestamps)
+        
+    return aggregate_timestamps(action_timestamps), aggregate_timestamps(sts_timestamps)
 
 def calculate_average_time_metrics(df, ts_col_map, status_history_col):
     """
@@ -58,7 +59,7 @@ def calculate_average_time_metrics(df, ts_col_map, status_history_col):
     """
     if df is None or df.empty or ts_col_map is None:
         return {"avg_time_to_first_contact": np.nan, "median_time_to_first_contact": np.nan, 
-                "avg_time_between_contacts": np.nan, "avg_time_new_to_sts": np.nan}
+                "avg_time_between_contacts": np.nan, "avg_time_new_to_sts": np.nan, "median_time_new_to_sts": np.nan}
 
     pof_ts_col = ts_col_map.get("Passed Online Form")
     psa_ts_col = ts_col_map.get("Pre-Screening Activities")
@@ -97,7 +98,7 @@ def calculate_average_time_metrics(df, ts_col_map, status_history_col):
     return {
         "avg_time_to_first_contact": ttfc_stats['mean'],
         "median_time_to_first_contact": ttfc_stats['median'],
-        "avg_time_between_contacts": avg_between_actions, # This is now avg time between ANY action
+        "avg_time_between_contacts": avg_between_actions,
         "avg_time_new_to_sts": new_to_sts_stats['mean'],
         "median_time_new_to_sts": new_to_sts_stats['median']
     }
@@ -229,7 +230,7 @@ def calculate_performance_over_time(df, ts_col_map):
     if not all(col in df.columns for col in [pof_ts_col, psa_ts_col, sts_ts_col]):
         return pd.DataFrame()
 
-    avg_pof_to_sts_lag = calculate_avg_lag_generic(df, pof_ts_col, sts_ts_col)
+    avg_pof_to_sts_lag = calculate_lag_stats(df, pof_ts_col, sts_ts_col)['mean']
     maturity_days = (avg_pof_to_sts_lag * 1.5) if pd.notna(avg_pof_to_sts_lag) else 30
 
     time_df = df.set_index('Submitted On_DT')
@@ -242,9 +243,9 @@ def calculate_performance_over_time(df, ts_col_map):
             week_df[week_df.index + pd.Timedelta(days=maturity_days) < pd.Timestamp.now()]
             .pipe(lambda mature_df: mature_df[sts_ts_col].notna().sum() / len(mature_df) if len(mature_df) > 0 else 0)
         ),
-        'Average Time to First Contact (Days)': calculate_avg_lag_generic(
+        'Average Time to First Contact (Days)': calculate_lag_stats(
             week_df, pof_ts_col, psa_ts_col
-        ),
+        )['mean'],
         'Average Sent to Site per Day': (
             week_df[sts_ts_col].notna().sum() / 7
         ),
@@ -258,7 +259,6 @@ def calculate_performance_over_time(df, ts_col_map):
 
     return weekly_summary
 
-# --- NEW FUNCTION ---
 def analyze_heatmap_efficiency(contact_heatmap, sts_heatmap):
     """
     Analyzes the two heatmaps to find the best and worst times for contact attempts.
