@@ -257,7 +257,8 @@ with st.container(border=True):
         display_cols = [
             'Site', 'Score', 'Grade', 'Total Qualified', 'Pre-Screening Activities Count', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 
             'SF or Lost After ICF Count', 'Lost After StS', 'Total Lost Count', 'Total Referrals Awaiting First Site Action', 
-            'Average time to first site action', 'Avg. Time Between Site Contacts', 'Avg number of site contact attempts per referral', 'StS Contact Rate %', 
+            'Average time to first site action',  
+            'StS Contact Rate %', 
             'StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'StS to Lost %', 'ICF to Enrollment %', 'SF or Lost After ICF %', 
             'Avg time from StS to Appt Sched.', 'Avg time from StS to ICF', 'Avg time from StS to Enrollment',
             'Qualified to StS %', 'Qualified to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %'
