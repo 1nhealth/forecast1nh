@@ -171,6 +171,63 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         'avg_time_between_site_contacts': avg_between_site_contacts,
         'avg_sts_to_appt': avg_sts_to_appt
     }
+
+def calculate_stale_referrals(df, ts_col_map, status_history_col, selected_site="Overall", stale_threshold_days=7):
+    """
+    Counts the number of referrals that have not had any action since being sent to a site
+    and are older than a given threshold.
+    """
+    if df is None or df.empty:
+        return 0
+
+    if selected_site != "Overall":
+        if 'Site' not in df.columns: return 0
+        site_df = df[df['Site'] == selected_site].copy()
+    else:
+        site_df = df.copy()
+
+    sts_ts_col = ts_col_map.get("Sent To Site")
+    if site_df.empty or not sts_ts_col or sts_ts_col not in site_df.columns:
+        return 0
+
+    # Filter for leads that have been sent to the site
+    site_df.dropna(subset=[sts_ts_col], inplace=True)
+    
+    # Exclude leads that have reached a terminal stage (e.g., Enrolled, Lost, Screen Failed)
+    terminal_cols = [ts_col_map.get(stage) for stage in ["Enrolled", "Lost", "Screen Failed"] if ts_col_map.get(stage) in site_df.columns]
+    for col in terminal_cols:
+        site_df = site_df[site_df[col].isna()]
+        
+    if site_df.empty:
+        return 0
+
+    all_ts_cols_after_sts = [v for k, v in ts_col_map.items() if k != "Sent To Site" and v in site_df.columns]
+
+    def has_action_after_sts(row):
+        sts_time = row[sts_ts_col]
+        # 1. Check for any action in the main funnel stage timestamps
+        for col in all_ts_cols_after_sts:
+            if pd.notna(row[col]) and row[col] > sts_time:
+                return True
+        # 2. Check for any action in the detailed status history
+        history = row.get(status_history_col, [])
+        if isinstance(history, list):
+            for _, event_dt in history:
+                if pd.notna(event_dt) and event_dt > sts_time:
+                    return True
+        return False
+
+    site_df['has_action'] = site_df.apply(has_action_after_sts, axis=1)
+
+    # Filter for referrals that have NO action
+    no_action_df = site_df[~site_df['has_action']].copy()
+
+    # From those, find the ones where the StS timestamp is older than our threshold
+    stale_cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=stale_threshold_days)
+    stale_count = no_action_df[no_action_df[sts_ts_col] < stale_cutoff_date].shape[0]
+    
+    return stale_count
+
 def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     if df is None or df.empty:
         return pd.DataFrame()
