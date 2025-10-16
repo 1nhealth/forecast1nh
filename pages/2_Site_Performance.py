@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 from scoring import score_sites
-from helpers import format_performance_df, format_days_to_dhm
+from helpers import format_performance_df, format_days_to_dhm, is_contact_attempt
 from calculations import (
     calculate_site_operational_kpis, 
     calculate_site_ttfc_effectiveness, 
@@ -14,7 +14,6 @@ from calculations import (
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import plotly.express as px
-from helpers import is_contact_attempt
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -26,11 +25,9 @@ with st.sidebar:
 
 st.title("🏆 Site Performance Dashboard")
 
-# --- NEW: Smart Configuration for Contact Statuses ---
+# --- Smart Configuration for Contact Statuses ---
 with st.expander("Configure 'Contact Attempt' Statuses"):
-    # Gracefully handle the case where data isn't loaded yet
     if st.session_state.get('data_processed_successfully', False):
-        # Get all unique statuses from the parsed history column
         all_statuses = set()
         histories = st.session_state.referral_data_processed['Parsed_Lead_Status_History'].dropna()
         for history_list in histories:
@@ -39,12 +36,10 @@ with st.expander("Configure 'Contact Attempt' Statuses"):
         
         sorted_statuses = sorted(list(all_statuses))
         
-        # Use our heuristic to create a smart default list
         smart_defaults = [status for status in sorted_statuses if is_contact_attempt(status)]
         
         st.info("The app has automatically selected statuses that appear to be contact attempts. You can add or remove from this list to refine the analysis below.")
         
-        # The multiselect widget with smart defaults
         selected_contact_statuses = st.multiselect(
             label="Select statuses to be treated as a 'Contact Attempt'",
             options=sorted_statuses,
@@ -53,7 +48,7 @@ with st.expander("Configure 'Contact Attempt' Statuses"):
         )
     else:
         st.warning("Upload data on the Home page to configure statuses.")
-        selected_contact_statuses = [] # Default to empty list if no data
+        selected_contact_statuses = []
 # --- END of new section ---
 
 if not st.session_state.get('data_processed_successfully', False):
@@ -74,13 +69,15 @@ with st.container(border=True):
         key="site_kpi_selector"
     )
 
+    # --- THIS BLOCK IS NOW SYNTACTICALLY CORRECT ---
     site_kpis = calculate_site_operational_kpis(
         st.session_state.referral_data_processed,
         st.session_state.ts_col_map,
         "Parsed_Lead_Status_History",
-        selected_site
+        selected_site, # <-- The missing comma has been added here
         contact_status_list=selected_contact_statuses
     )
+    
     lost_reasons = calculate_lost_reasons_after_sts(
         st.session_state.referral_data_processed,
         st.session_state.ts_col_map,
@@ -94,6 +91,7 @@ with st.container(border=True):
         "Parsed_Lead_Status_History",
         selected_site
     )
+    
     kpi_cols = st.columns(4)
     kpi_cols[0].metric(
         label="Avg. Time to First Site Action",
@@ -135,7 +133,7 @@ with st.container(border=True):
     st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
     
     site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, "Parsed_Lead_Status_History", selected_site, contact_status_list=selected_contact_statuses)
-    if site_contact_effectiveness_df.empty or site_contact_effectiveness_df['Total Referrals'].sum() == 0:
+    if site_contact_effectiveness_df.empty or 'Total Referrals' not in site_contact_effectiveness_df.columns or site_contact_effectiveness_df['Total Referrals'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze contact attempt effectiveness.")
     else:
         display_df_contact = site_contact_effectiveness_df.copy()
@@ -173,27 +171,29 @@ with st.container(border=True):
     else:
         secondary_metric = 'Total Sent to Site per Week'
         primary_metric_options = {
-            'Sent to Site -> Appointment %': ('Sent to Site -> Appointment % (Actual)', 'Sent to Site -> Appointment % (Projected)'),
-            'Sent to Site -> ICF %': ('Sent to Site -> ICF % (Actual)', 'Sent to Site -> ICF % (Projected)'),
-            'Sent to Site -> Enrollment %': ('Sent to Site -> Enrollment % (Actual)', 'Sent to Site -> Enrollment % (Projected)'),
+            'Sent to Site -> Appointment %': ('Sent to Site -> Appointment %', None),
+            'Sent to Site -> ICF %': ('Sent to Site -> ICF %', None),
+            'Sent to Site -> Enrollment %': ('Sent to Site -> Enrollment %', None),
             'Total Appointments per Week': ('Total Appointments per Week', None),
             'Average Time to First Site Action (Days)': ('Average Time to First Site Action (Days)', None),
         }
-        available_options = [opt for opt, cols in primary_metric_options.items() if cols[0] in over_time_df.columns]
+        # Simplified the logic for available options and removed projected columns for now
+        available_options = [opt for opt in primary_metric_options.keys() if opt in over_time_df.columns]
         
         if available_options:
             primary_metric_display_name = st.selectbox("Select a primary metric to display on the chart:", options=available_options, key=f"site_perf_time_selector_{selected_site.replace(' ', '_')}")
             compare_with_volume = st.toggle(f"Compare with {secondary_metric}", value=True, key=f"site_perf_time_toggle_{selected_site.replace(' ', '_')}")
-            actual_col, projected_col = primary_metric_options[primary_metric_display_name]
+            
             fig = make_subplots(specs=[[{"secondary_y": True}]])
-            fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[actual_col], name=primary_metric_display_name, mode='lines+markers', line=dict(color='#53CA97')), secondary_y=False)
-            if projected_col and projected_col in over_time_df.columns:
-                fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[projected_col], name="Projected Trend", mode='lines', line=dict(color='#53CA97', dash='dot'), showlegend=False), secondary_y=False)
+            fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[primary_metric_display_name], name=primary_metric_display_name, mode='lines+markers', line=dict(color='#53CA97')), secondary_y=False)
+            
             if compare_with_volume and secondary_metric in over_time_df.columns:
                 fig.add_trace(go.Scatter(x=over_time_df.index, y=over_time_df[secondary_metric], name=secondary_metric, line=dict(dash='dot', color='gray')), secondary_y=True)
+            
             fig.update_yaxes(title_text=f"<b>{primary_metric_display_name}</b>", secondary_y=False)
             if compare_with_volume and secondary_metric in over_time_df.columns:
                 fig.update_yaxes(title_text=f"<b>{secondary_metric}</b>", secondary_y=True, showgrid=False)
+            
             fig.update_layout(title_text=f"Weekly Trend for {selected_site}: {primary_metric_display_name}", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
 
@@ -224,6 +224,7 @@ with st.expander("Adjust Site Performance Scoring Weights"):
         st.slider("StS to Lost %", 0, 100, key="w_site_sts_to_lost")
 
     if st.button("Apply & Recalculate Score", type="primary", use_container_width=True, key="apply_site_weights"):
+        # This part of the logic may need to be updated depending on session state keys for weights
         weights = {
             "StS to Enrollment %": st.session_state.w_site_sts_to_enr,
             "ICF to Enrollment %": st.session_state.w_site_icf_to_enroll,
@@ -237,13 +238,10 @@ with st.expander("Adjust Site Performance Scoring Weights"):
             "Total Referrals Awaiting First Site Action": st.session_state.w_site_awaiting_action,
             "SF or Lost After ICF %": st.session_state.w_site_icf_to_lost,
             "StS to Lost %": st.session_state.w_site_sts_to_lost,
-            'Qualified to Enrollment %': st.session_state.w_site_qual_to_enroll,
-            'Qualified to ICF %': st.session_state.w_site_qual_to_icf,
         }
         total_weight = sum(abs(w) for w in weights.values())
         weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
         
-        # --- FIX: Read pre-calculated DF from state ---
         if not st.session_state.enhanced_site_metrics_df.empty:
             st.session_state.ranked_sites_df = score_sites(st.session_state.enhanced_site_metrics_df, weights_normalized)
         else:
