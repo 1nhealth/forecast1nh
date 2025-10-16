@@ -58,14 +58,17 @@ except Exception as e:
 
 # --- System Prompts for the Advanced Agent ---
 def get_df_info(df):
+    if df is None: # Add a check for None to be safe
+        return "DataFrame is not available."
     buffer = StringIO()
     df.info(buf=buffer)
     return buffer.getvalue()
 
 def get_system_prompt():
-    site_perf_info = get_df_info(st.session_state.enhanced_site_metrics_df)
-    utm_perf_info = get_df_info(st.session_state.enhanced_ad_source_metrics_df)
-    raw_df_info = get_df_info(st.session_state.referral_data_processed)
+    # Use .get() for safety in case a dataframe doesn't exist yet
+    site_perf_info = get_df_info(st.session_state.get('enhanced_site_metrics_df'))
+    utm_perf_info = get_df_info(st.session_state.get('enhanced_ad_source_metrics_df'))
+    raw_df_info = get_df_info(st.session_state.get('referral_data_processed'))
 
     return f"""You are an expert-level Python data analyst and a helpful AI assistant. Your goal is to be a full partner in data analysis for the user.
 
@@ -97,15 +100,20 @@ Begin the conversation by introducing yourself and asking the user what they wou
 """
 
 # --- Conversational Chat Logic ---
-if "chat" not in st.session_state:
-    # The start_chat call is now simplified
+
+### FIX: This is the corrected, robust initialization block. ###
+# It handles all cases: the very first visit, or a visit after a full data reset.
+if "messages" not in st.session_state or "chat" not in st.session_state:
+    # Initialize the Gemini model chat
     st.session_state.chat = model.start_chat(history=[])
     
-    # Send the initial system prompt and get the first message
+    # Send the initial system prompt to get the welcome message
     initial_response = st.session_state.chat.send_message(get_system_prompt())
+
+    # Initialize the messages list with the welcome message
     st.session_state.messages = [{"role": "assistant", "content": initial_response.text}]
 
-# Display existing messages
+# Display existing messages (This line is now safe to run)
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
