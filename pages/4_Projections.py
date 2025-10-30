@@ -64,7 +64,7 @@ processed_data = st.session_state.referral_data_processed
 ordered_stages = st.session_state.ordered_stages
 ts_col_map = st.session_state.ts_col_map
 inter_stage_lags = st.session_state.inter_stage_lags
-site_metrics = st.session_state.site_metrics_calculated
+site_metrics = st.session_state.enhanced_site_metrics_df
 
 # --- Main Page Logic ---
 effective_rates, method_desc = determine_effective_projection_rates(
