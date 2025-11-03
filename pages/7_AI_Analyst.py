@@ -16,12 +16,12 @@ import sys
 from constants import *
 from helpers import format_performance_df
 
-st.set_page_config(page_title="AI Analyst", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="AI Analyst", page_icon="ðŸ¤–", layout="wide")
 
 with st.sidebar:
     st.logo("assets/logo.png", link="https://1nhealth.com")
 
-st.title("🤖 Strategic AI Analyst")
+st.title("ðŸ¤– Strategic AI Analyst")
 st.info("""
 This AI Analyst is now a conversational partner. It remembers your previous questions and can use its Python tool to analyze data, find insights, and even correct its own mistakes. Start by asking a question!
 """)
@@ -143,20 +143,212 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                 output_buffer = StringIO()
                 sys.stdout = output_buffer
                 
+                # Create a storage for captured display data
+                captured_data = []
+                
+                def get_dataframe_summary(df):
+                    """Extract comprehensive summary statistics from a DataFrame"""
+                    summary_parts = []
+                    
+                    # Basic info
+                    summary_parts.append(f"Shape: {df.shape[0]} rows × {df.shape[1]} columns")
+                    summary_parts.append(f"Columns: {', '.join(df.columns.tolist())}")
+                    
+                    # Show the actual data (first 20 rows, all columns)
+                    summary_parts.append("\nData Preview (first 20 rows):")
+                    summary_parts.append(df.head(20).to_string())
+                    
+                    # If there are more rows, show the last few too
+                    if len(df) > 20:
+                        summary_parts.append(f"\n... ({len(df) - 20} more rows)")
+                        summary_parts.append("\nLast 5 rows:")
+                        summary_parts.append(df.tail(5).to_string())
+                    
+                    # Statistical summary for numeric columns
+                    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+                    if numeric_cols:
+                        summary_parts.append("\nStatistical Summary for Numeric Columns:")
+                        for col in numeric_cols:
+                            stats = df[col].describe()
+                            summary_parts.append(f"\n{col}:")
+                            summary_parts.append(f"  Mean: {stats['mean']:.2f}")
+                            summary_parts.append(f"  Median (50%): {stats['50%']:.2f}")
+                            summary_parts.append(f"  Std Dev: {stats['std']:.2f}")
+                            summary_parts.append(f"  Min: {stats['min']:.2f}")
+                            summary_parts.append(f"  Max: {stats['max']:.2f}")
+                            summary_parts.append(f"  Range: {stats['max'] - stats['min']:.2f}")
+                    
+                    return "\n".join(summary_parts)
+                
+                # Create wrapper functions that capture AND display
+                def capture_dataframe(data, *args, **kwargs):
+                    """Wrapper for st.dataframe that captures the data with statistics"""
+                    if isinstance(data, pd.DataFrame):
+                        captured_data.append(("dataframe", get_dataframe_summary(data)))
+                    elif isinstance(data, pd.Series):
+                        df_from_series = data.to_frame()
+                        captured_data.append(("dataframe", get_dataframe_summary(df_from_series)))
+                    elif isinstance(data, (list, dict)):
+                        captured_data.append(("dataframe", str(data)))
+                    return st.dataframe(data, *args, **kwargs)
+                
+                def capture_table(data, *args, **kwargs):
+                    """Wrapper for st.table that captures the data with statistics"""
+                    if isinstance(data, pd.DataFrame):
+                        captured_data.append(("table", get_dataframe_summary(data)))
+                    elif isinstance(data, pd.Series):
+                        df_from_series = data.to_frame()
+                        captured_data.append(("table", get_dataframe_summary(df_from_series)))
+                    elif isinstance(data, (list, dict)):
+                        captured_data.append(("table", str(data)))
+                    return st.table(data, *args, **kwargs)
+                
+                def capture_write(*args, **kwargs):
+                    """Wrapper for st.write that captures the data with statistics"""
+                    for arg in args:
+                        if isinstance(arg, pd.DataFrame):
+                            captured_data.append(("write", get_dataframe_summary(arg)))
+                        elif isinstance(arg, pd.Series):
+                            df_from_series = arg.to_frame()
+                            captured_data.append(("write", get_dataframe_summary(df_from_series)))
+                        elif isinstance(arg, (list, dict)):
+                            captured_data.append(("write", str(arg)))
+                        else:
+                            captured_data.append(("write", str(arg)))
+                    return st.write(*args, **kwargs)
+                
+                def capture_metric(label, value, *args, **kwargs):
+                    """Wrapper for st.metric that captures the data"""
+                    captured_data.append(("metric", f"{label}: {value}"))
+                    return st.metric(label, value, *args, **kwargs)
+                
+                def capture_plotly_chart(fig, *args, **kwargs):
+                    """Wrapper for st.plotly_chart that extracts actual data values"""
+                    try:
+                        chart_info_parts = []
+                        
+                        if hasattr(fig, 'data') and fig.data:
+                            chart_info_parts.append(f"Chart Type: Plotly with {len(fig.data)} trace(s)")
+                            
+                            # Extract layout info
+                            if hasattr(fig, 'layout'):
+                                layout = fig.layout
+                                if hasattr(layout, 'title') and layout.title:
+                                    chart_info_parts.append(f"Title: {layout.title.text if hasattr(layout.title, 'text') else layout.title}")
+                                if hasattr(layout, 'xaxis') and hasattr(layout.xaxis, 'title'):
+                                    chart_info_parts.append(f"X-axis: {layout.xaxis.title.text if hasattr(layout.xaxis.title, 'text') else layout.xaxis.title}")
+                                if hasattr(layout, 'yaxis') and hasattr(layout.yaxis, 'title'):
+                                    chart_info_parts.append(f"Y-axis: {layout.yaxis.title.text if hasattr(layout.yaxis.title, 'text') else layout.yaxis.title}")
+                            
+                            # Extract data from each trace
+                            for i, trace in enumerate(fig.data):
+                                trace_info = [f"\nTrace {i+1}:"]
+                                
+                                if hasattr(trace, 'type'):
+                                    trace_info.append(f"  Type: {trace.type}")
+                                if hasattr(trace, 'name') and trace.name:
+                                    trace_info.append(f"  Name: {trace.name}")
+                                
+                                # Extract actual x and y data
+                                if hasattr(trace, 'x') and trace.x is not None:
+                                    x_data = list(trace.x)
+                                    if len(x_data) <= 50:
+                                        trace_info.append(f"  X values: {x_data}")
+                                    else:
+                                        trace_info.append(f"  X values (first 10): {x_data[:10]}")
+                                        trace_info.append(f"  X values (last 10): {x_data[-10:]}")
+                                        trace_info.append(f"  Total X points: {len(x_data)}")
+                                
+                                if hasattr(trace, 'y') and trace.y is not None:
+                                    y_data = list(trace.y)
+                                    if len(y_data) <= 50:
+                                        trace_info.append(f"  Y values: {y_data}")
+                                    else:
+                                        trace_info.append(f"  Y values (first 10): {y_data[:10]}")
+                                        trace_info.append(f"  Y values (last 10): {y_data[-10:]}")
+                                        trace_info.append(f"  Total Y points: {len(y_data)}")
+                                    
+                                    # Add statistics for Y values
+                                    y_array = np.array(y_data)
+                                    if np.issubdtype(y_array.dtype, np.number):
+                                        trace_info.append(f"  Y Statistics:")
+                                        trace_info.append(f"    Mean: {np.mean(y_array):.2f}")
+                                        trace_info.append(f"    Median: {np.median(y_array):.2f}")
+                                        trace_info.append(f"    Min: {np.min(y_array):.2f}")
+                                        trace_info.append(f"    Max: {np.max(y_array):.2f}")
+                                        trace_info.append(f"    Std Dev: {np.std(y_array):.2f}")
+                                
+                                chart_info_parts.append("\n".join(trace_info))
+                        
+                        captured_data.append(("plotly_chart", "\n".join(chart_info_parts)))
+                    except Exception as e:
+                        captured_data.append(("plotly_chart", f"Plotly chart generated (error extracting data: {str(e)})"))
+                    return st.plotly_chart(fig, *args, **kwargs)
+                
+                # Create a custom streamlit object with wrapped functions
+                class StreamlitWrapper:
+                    def __init__(self, st_module):
+                        self._st = st_module
+                    
+                    def __getattr__(self, name):
+                        # Return wrapped versions of display functions
+                        if name == 'dataframe':
+                            return capture_dataframe
+                        elif name == 'table':
+                            return capture_table
+                        elif name == 'write':
+                            return capture_write
+                        elif name == 'metric':
+                            return capture_metric
+                        elif name == 'plotly_chart':
+                            return capture_plotly_chart
+                        else:
+                            # Pass through all other streamlit functions unchanged
+                            return getattr(self._st, name)
+                
+                st_wrapped = StreamlitWrapper(st)
+                
                 try:
                     with result_display_area:
                         exec(code_to_execute, {
-                            "st": st, "pd": pd, "np": np, "px": px, "go": go, "plt": plt, "alt": alt,
+                            "st": st_wrapped, "pd": pd, "np": np, "px": px, "go": go, "plt": plt, "alt": alt,
                             "df": df, "site_performance_df": site_performance_df, "utm_performance_df": utm_performance_df,
                             "ts_col_map": ts_col_map, "ordered_stages": ordered_stages
                         })
+                    
+                    # Combine stdout and captured display data
                     execution_output = output_buffer.getvalue()
                     if execution_output:
                         st.text(execution_output)
                     
+                    # Build comprehensive output for AI summarization
+                    comprehensive_output = []
+                    if execution_output.strip():
+                        comprehensive_output.append(f"Printed output:\n{execution_output}")
+                    
+                    if captured_data:
+                        comprehensive_output.append("\nDisplayed data:")
+                        for display_type, content in captured_data:
+                            comprehensive_output.append(f"\n[{display_type.upper()}]:\n{content}\n")
+                    
+                    final_output = "\n".join(comprehensive_output) if comprehensive_output else "Code executed successfully with visual output."
+                    
                     # Send the execution result back to the model for summarization
                     with st.spinner("Summarizing results..."):
-                        summary_prompt = f"Here is the output from your code. Please provide a comprehensive, user-friendly summary of these findings. If it's a plot, describe the key insights. If it's a table, explain what the data shows.\n\nOutput:\n{execution_output or 'A plot was generated successfully.'}"
+                        summary_prompt = f"""Based on the ACTUAL DATA VALUES shown below, provide a specific, data-driven analysis. 
+
+CRITICAL INSTRUCTIONS:
+- Reference the ACTUAL NUMBERS from the data (e.g., "Week of 2024-01-15 had 45.2%")
+- Identify the SPECIFIC highest and lowest values with their exact dates/categories
+- Calculate and mention SPECIFIC trends (e.g., "increased from 35% to 48% over 8 weeks")
+- DO NOT use placeholder language like "(Describe the general movement)" or "(Identify the week(s))"
+- DO NOT provide generic templated analysis
+- Every statement must reference specific data points from the output below
+
+Data Output:
+{final_output}
+
+Provide a concise, specific analysis based on these exact values."""
                         summary_response = st.session_state.chat.send_message(summary_prompt)
                         st.markdown(summary_response.text)
                         st.session_state.messages.append({"role": "assistant", "content": summary_response.text})

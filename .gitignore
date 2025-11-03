@@ -1,0 +1,26 @@
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Secrets - NEVER commit!
+.streamlit/secrets.toml
+
+# Data files
+*.csv
+*.xlsx
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
