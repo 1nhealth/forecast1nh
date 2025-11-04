@@ -60,6 +60,7 @@ SCORING_WEIGHT_KEYS = [
 PAGE_UI_STATE_KEYS = [
     'chat',
     'messages'
+    'gemini_model'
 ]
 
 # Combine all keys that need to be initialized

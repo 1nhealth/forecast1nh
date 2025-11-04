@@ -16,12 +16,12 @@ import sys
 from constants import *
 from helpers import format_performance_df
 
-st.set_page_config(page_title="AI Analyst", page_icon="ðŸ¤–", layout="wide")
+st.set_page_config(page_title="AI Analyst", page_icon="🤖", layout="wide")
 
 with st.sidebar:
     st.logo("assets/logo.png", link="https://1nhealth.com")
 
-st.title("ðŸ¤– Strategic AI Analyst")
+st.title("🤖 Strategic AI Analyst")
 st.info("""
 This AI Analyst is now a conversational partner. It remembers your previous questions and can use its Python tool to analyze data, find insights, and even correct its own mistakes. Start by asking a question!
 """)
@@ -38,23 +38,25 @@ status_history_col = "Parsed_Lead_Status_History"
 site_performance_df = st.session_state.enhanced_site_metrics_df
 utm_performance_df = st.session_state.enhanced_ad_source_metrics_df
 
-# --- Configure the Gemini API ---
-try:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=GEMINI_API_KEY)
-    
-    # --- THIS IS THE CORRECTED SECTION ---
-    generation_config = genai.GenerationConfig(temperature=0.2)
-    model = genai.GenerativeModel(
-        'gemini-flash-latest',
-        generation_config=generation_config
-    )
-    # --- END OF CORRECTION ---
+# --- Configure the Gemini API (Session-Specific for User Isolation) ---
+if "gemini_model" not in st.session_state:
+    try:
+        GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=GEMINI_API_KEY)
+        
+        # Create model in session state - each user gets their own instance
+        generation_config = genai.GenerationConfig(temperature=0.2)
+        st.session_state.gemini_model = genai.GenerativeModel(
+            'gemini-flash-latest',
+            generation_config=generation_config
+        )
+    except Exception as e:
+        st.error("Error configuring the AI model. Have you set your GEMINI_API_KEY in Streamlit's secrets?")
+        st.exception(e)
+        st.stop()
 
-except Exception as e:
-    st.error("Error configuring the AI model. Have you set your GEMINI_API_KEY in Streamlit's secrets?")
-    st.exception(e)
-    st.stop()
+# Use the session-specific model
+model = st.session_state.gemini_model
 
 # --- System Prompts for the Advanced Agent ---
 def get_df_info(df):
