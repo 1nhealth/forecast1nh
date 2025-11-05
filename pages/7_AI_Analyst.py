@@ -14,9 +14,74 @@ import plotly.express as px
 import sys
 
 from constants import *
-from helpers import format_performance_df
+from helpers import format_performance_df, load_css
 
 st.set_page_config(page_title="AI Analyst", page_icon="🤖", layout="wide")
+
+# Load custom CSS for branded theme
+load_css("custom_theme.css")
+
+# PAGE-SPECIFIC CSS: Chat input styling - OPTIMIZED VERSION
+st.markdown("""
+<style>
+/* AI ANALYST PAGE ONLY - CHAT INPUT STYLING */
+
+/* Nuclear option - catches ALL elements (makes first 3 blocks redundant) */
+[data-testid="stChatInput"] *:not(button):not(svg):not(path):not(circle):not(rect),
+[data-testid="stChatInputContainer"] *:not(button):not(svg):not(path):not(circle):not(rect) {
+    background-color: #FFFFFF !important;
+    border-color: #dfe2e6;
+}
+
+/* Textarea specific styling */
+[data-testid="stChatInput"] textarea,
+[data-testid="stChatInputContainer"] textarea {
+    border: none !important;
+    color: #1b2222 !important;
+}
+
+/* Focus state - green border */
+[data-testid="stChatInput"]:focus-within,
+[data-testid="stChatInputContainer"]:focus-within {
+    border-color: #53CA97 !important;
+}
+
+/* Send button - white background */
+[data-testid="stChatInput"] button,
+[data-testid="stChatInputContainer"] button {
+    background-color: #FFFFFF !important;
+    border: none !important;
+}
+
+/* Button icon - grey default */
+[data-testid="stChatInput"] button svg,
+[data-testid="stChatInput"] button svg path,
+[data-testid="stChatInputContainer"] button svg,
+[data-testid="stChatInputContainer"] button svg path {
+    color: #6B7280 !important;
+    fill: #6B7280 !important;
+}
+
+/* Button icon - green on hover and click (combined) */
+[data-testid="stChatInput"] button:hover svg,
+[data-testid="stChatInput"] button:hover svg path,
+[data-testid="stChatInput"] button:active svg,
+[data-testid="stChatInput"] button:active svg path,
+[data-testid="stChatInputContainer"] button:hover svg,
+[data-testid="stChatInputContainer"] button:hover svg path,
+[data-testid="stChatInputContainer"] button:active svg,
+[data-testid="stChatInputContainer"] button:active svg path {
+    color: #53CA97 !important;
+    fill: #53CA97 !important;
+}
+
+/* Placeholder text */
+[data-testid="stChatInput"] textarea::placeholder,
+[data-testid="stChatInputContainer"] textarea::placeholder {
+    color: rgba(27, 34, 34, 0.5) !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 with st.sidebar:
     st.logo("assets/logo.png", link="https://1nhealth.com")

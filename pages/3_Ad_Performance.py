@@ -3,9 +3,12 @@ import streamlit as st
 import pandas as pd
 
 from scoring import score_performance_groups
-from helpers import format_performance_df
+from helpers import format_performance_df, load_css
 
 st.set_page_config(page_title="Ad Performance", page_icon="📢", layout="wide")
+
+# Load custom CSS for branded theme
+load_css("custom_theme.css")
 
 if 'ranked_ad_source_df' not in st.session_state:
     st.session_state.ranked_ad_source_df = pd.DataFrame()

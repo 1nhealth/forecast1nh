@@ -9,13 +9,16 @@ from parsing import parse_funnel_definition
 from processing import preprocess_referral_data
 from calculations import calculate_overall_inter_stage_lags, calculate_enhanced_site_metrics, calculate_enhanced_ad_metrics
 from constants import *
-from helpers import format_performance_df
+from helpers import format_performance_df, load_css
 
 st.set_page_config(
     page_title="Recruitment Forecasting Tool",
     page_icon="assets/favicon.png", 
     layout="wide"
 )
+
+# Load custom CSS for branded theme
+load_css("custom_theme.css")
 
 # --- Session State Initialization ---
 
@@ -59,7 +62,7 @@ SCORING_WEIGHT_KEYS = [
 # This state is only used for the reset button. It will NOT be initialized globally.
 PAGE_UI_STATE_KEYS = [
     'chat',
-    'messages'
+    'messages',
     'gemini_model'
 ]
 
@@ -115,25 +118,6 @@ with st.sidebar:
         st.info("To analyze a new dataset, please use the 'Clear Data & Reset' button on the main page.")
         uploaded_referral_file = None
         uploaded_funnel_def_file = None
-
-    st.divider()
-
-    with st.expander("Historical Ad Spend"):
-        edited_df = st.data_editor(st.session_state.historical_spend_df, num_rows="dynamic", key="hist_spend_editor")
-        temp_spend_dict = {}
-        valid_entries = True
-        for _, row in edited_df.iterrows():
-            try:
-                if row['Month (YYYY-MM)'] and pd.notna(row['Historical Spend']):
-                    month_period = pd.Period(row['Month (YYYY-MM)'], freq='M')
-                    temp_spend_dict[month_period] = float(row['Historical Spend'])
-            except Exception:
-                st.error(f"Invalid month format: {row['Month (YYYY-MM)']}. Please use YYYY-MM.")
-                valid_entries = False
-                break
-        if valid_entries:
-            st.session_state.ad_spend_input_dict = temp_spend_dict
-            st.session_state.historical_spend_df = edited_df
 
 # --- Main Page Content ---
 st.title("📊 Recruitment Forecasting Tool")

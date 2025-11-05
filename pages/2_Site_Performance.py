@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 from scoring import score_sites
-from helpers import format_performance_df, format_days_to_dhm, is_contact_attempt
+from helpers import format_performance_df, format_days_to_dhm, is_contact_attempt, load_css
 from calculations import (
     calculate_site_operational_kpis, 
     calculate_site_ttfc_effectiveness, 
@@ -16,6 +16,9 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
+
+# Load custom CSS for branded theme
+load_css("custom_theme.css")
 
 if 'ranked_sites_df' not in st.session_state:
     st.session_state.ranked_sites_df = pd.DataFrame()

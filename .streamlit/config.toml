@@ -3,10 +3,10 @@
 # This command tells Streamlit to use this theme configuration.
 [theme]
 
-# This sets the default theme to be our custom dark theme.
-base = "dark"
-primaryColor = "#53CA97"      # Mint Green
-backgroundColor = "#1B2222"  # Eerie Black
-secondaryBackgroundColor = "#293434" # Darker Shade
-textColor = "#F8F8F8"          # Seasalt
+# Light theme base with custom brand colors
+base = "light"
+primaryColor = "#53CA97"         # Brand Green - used for graphs and primary elements
+backgroundColor = "#f5f6f8"      # Light gray background for main page
+secondaryBackgroundColor = "#f5f6f8"  # Light gray for input fields (changed from #FFFFFF)
+textColor = "#1b2222"            # Brand Black for text
 font = "sans serif"

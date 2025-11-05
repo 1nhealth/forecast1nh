@@ -1,0 +1,580 @@
+/* custom_theme.css - Brand styling for sidebar and UI elements */
+
+/* ========================================
+   SIDEBAR STYLING
+   ======================================== */
+
+/* Sidebar background */
+[data-testid="stSidebar"] {
+    background-color: #1b2222 !important;
+}
+
+/* Sidebar content wrapper */
+[data-testid="stSidebar"] > div:first-child {
+    background-color: #1b2222 !important;
+}
+
+/* Sidebar text elements - white by default */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] h4,
+[data-testid="stSidebar"] h5,
+[data-testid="stSidebar"] h6,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] a {
+    color: #FFFFFF !important;
+}
+
+/* Sidebar navigation items - white text by default */
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {
+    color: #FFFFFF !important;
+    background-color: transparent !important;
+}
+
+/* Active/selected navigation item - brand green background with brand black text */
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"],
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover {
+    background-color: #53CA97 !important;
+    color: #1b2222 !important;
+    border-radius: 4px;
+}
+
+/* Active/hover page link text elements - brand black */
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"] span,
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"] p,
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover span,
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover p {
+    color: #1b2222 !important;
+}
+
+/* Sidebar buttons - keep their backgrounds, but text should be appropriate */
+[data-testid="stSidebar"] button[kind="primary"] {
+    background-color: #53CA97 !important;
+    color: #1b2222 !important;
+}
+
+[data-testid="stSidebar"] button[kind="primary"]:hover {
+    background-color: #45b585 !important;
+    color: #1b2222 !important;
+}
+
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: transparent !important;
+    color: #FFFFFF !important;
+    border: 1px solid #FFFFFF !important;
+}
+
+[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background-color: #53CA97 !important;
+    color: #1b2222 !important;
+    border-color: #53CA97 !important;
+}
+
+/* Sidebar inputs and form elements */
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] textarea,
+[data-testid="stSidebar"] select {
+    background-color: #293434 !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Dropdown options and select menus in sidebar */
+[data-testid="stSidebar"] option {
+    background-color: #293434 !important;
+    color: #FFFFFF !important;
+}
+
+/* Sidebar select arrow/icon */
+[data-testid="stSidebar"] select {
+    color: #FFFFFF !important;
+}
+
+/* Input placeholder text */
+[data-testid="stSidebar"] input::placeholder,
+[data-testid="stSidebar"] textarea::placeholder {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Sidebar checkboxes */
+[data-testid="stSidebar"] input[type="checkbox"] {
+    accent-color: #53CA97 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label {
+    color: #FFFFFF !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stCheckbox"] {
+    color: #FFFFFF !important;
+}
+
+/* Sidebar dividers */
+[data-testid="stSidebar"] hr {
+    border-color: #53CA97 !important;
+}
+
+/* Sidebar expander - NO colored borders */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background-color: #293434 !important;
+    border: none !important;
+}
+
+/* All text inside sidebar expanders should be white */
+[data-testid="stSidebar"] [data-testid="stExpander"] h1,
+[data-testid="stSidebar"] [data-testid="stExpander"] h2,
+[data-testid="stSidebar"] [data-testid="stExpander"] h3,
+[data-testid="stSidebar"] [data-testid="stExpander"] h4,
+[data-testid="stSidebar"] [data-testid="stExpander"] h5,
+[data-testid="stSidebar"] [data-testid="stExpander"] h6,
+[data-testid="stSidebar"] [data-testid="stExpander"] p,
+[data-testid="stSidebar"] [data-testid="stExpander"] span,
+[data-testid="stSidebar"] [data-testid="stExpander"] label,
+[data-testid="stSidebar"] [data-testid="stExpander"] div {
+    color: #FFFFFF !important;
+}
+
+/* File uploader in sidebar */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] {
+    background-color: #293434 !important;
+    border: none !important;
+    border-radius: 0.5rem !important;
+    padding: 1rem !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
+    background-color: #293434 !important;
+    border: none !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] label {
+    color: #FFFFFF !important;
+}
+
+/* File uploader drag and drop area - NO green border */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] {
+    background-color: #1b2222 !important;
+    border: 2px dashed rgba(255, 255, 255, 0.3) !important;
+}
+
+/* File names and all text in uploader - WHITE */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] small,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] span,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] p,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] div {
+    color: #FFFFFF !important;
+}
+
+/* Browse files button */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] button {
+    background-color: #53CA97 !important;
+    color: #1b2222 !important;
+    border: none !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploadDropzone"] button:hover {
+    background-color: #45b585 !important;
+    color: #1b2222 !important;
+}
+
+
+
+/* Sidebar notification boxes - keep them darker with NO green borders */
+[data-testid="stSidebar"] [data-testid="stAlert"],
+[data-testid="stSidebar"] [data-testid="stNotification"] {
+    background-color: #293434 !important;
+    border: none !important;
+    border-radius: 0.5rem;
+}
+
+[data-testid="stSidebar"] [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] [data-testid="stNotification"] [data-testid="stMarkdownContainer"] {
+    color: #FFFFFF !important;
+}
+
+/* Specific alert types in sidebar */
+[data-testid="stSidebar"] div[data-testid="stAlert"][class*="info"],
+[data-testid="stSidebar"] div[data-testid="stAlert"][class*="warning"],
+[data-testid="stSidebar"] div[data-testid="stAlert"][class*="success"],
+[data-testid="stSidebar"] div[data-testid="stAlert"][class*="error"] {
+    background-color: #293434 !important;
+    border: none !important;
+    border-radius: 0.5rem;
+}
+
+/* Alert icons in sidebar should be visible */
+[data-testid="stSidebar"] [data-testid="stAlert"] svg,
+[data-testid="stSidebar"] [data-testid="stNotification"] svg {
+    color: #53CA97 !important;
+}
+
+/* Sidebar data editor/table - DARK TEXT for readability on white background */
+[data-testid="stSidebar"] .stDataFrameGlideDataEditor *,
+[data-testid="stSidebar"] [data-testid="stDataFrame"] *,
+[data-testid="stSidebar"] [data-testid="stDataFrameResizable"] * {
+    color: #1b2222 !important;
+}
+
+/* Sidebar table elements - DARK TEXT */
+[data-testid="stSidebar"] table,
+[data-testid="stSidebar"] table *,
+[data-testid="stSidebar"] thead *,
+[data-testid="stSidebar"] tbody *,
+[data-testid="stSidebar"] tr *,
+[data-testid="stSidebar"] th,
+[data-testid="stSidebar"] td {
+    color: #1b2222 !important;
+}
+
+/* ========================================
+   MAIN CONTENT AREA
+   ======================================== */
+
+/* Main page background - light gray */
+.main,
+.main > div {
+    background-color: #f5f6f8 !important;
+}
+
+.main .block-container {
+    background-color: #f5f6f8 !important;
+}
+
+/* Layout wrapper - keep it transparent, don't force white backgrounds everywhere */
+div[data-testid="stLayoutWrapper"] {
+    background-color: transparent !important;
+}
+
+/* Columns - transparent, no borders (they're just layout containers) */
+[data-testid="column"] {
+    background-color: transparent !important;
+    border: none !important;
+    padding: 0.5rem !important; /* Small padding for gap between columns */
+}
+
+/* Containers with border=True - white with borders */
+[data-testid="stVerticalBlock"][data-border="true"],
+.element-container > div[data-testid="stVerticalBlock"] > div[style*="border"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid #dfe2e6 !important;
+    border-radius: 0.5rem !important;
+    padding: 1.5rem !important;
+}
+
+/* Streamlit emotion cache containers with borders - CRITICAL FIX */
+/* Target any emotion cache class that has a border property */
+.main div[class*="st-emotion-cache"][style*="border"],
+.main div[class^="st-emotion-cache-"][style*="border"] {
+    background-color: #FFFFFF !important;
+}
+
+/* Catch emotion cache divs with both border and border-radius */
+.main div[class*="st-emotion-cache"][style*="border-radius"][style*="border: 1px"] {
+    background-color: #FFFFFF !important;
+}
+
+/* Specific emotion cache classes for containers (may change with Streamlit updates) */
+.st-emotion-cache-1npeq5t,
+.st-emotion-cache-1npeq5t > div,
+.st-emotion-cache-1w8m906,
+.st-emotion-cache-1w8m906 > div {
+    background-color: #FFFFFF !important;
+}
+
+/* Generic fallback: Any div with border styling in main content should have white background */
+.main > div > div > div[style*="border: 1px"],
+.main div[style*="border-radius"][style*="border"] {
+    background-color: #FFFFFF !important;
+}
+
+/* ========================================
+   PLOTLY CHARTS / GRAPHS
+   ======================================== */
+
+/* Plotly chart container - transparent background */
+[data-testid="stPlotlyChart"] {
+    background-color: transparent !important;
+    border-radius: 0.5rem !important;
+}
+
+/* Plotly main containers - transparent background */
+.js-plotly-plot,
+.js-plotly-plot .plotly,
+.js-plotly-plot .plot-container {
+    background-color: transparent !important;
+}
+
+/* SVG background transparent - KEY FIX */
+.js-plotly-plot > .plotly > .svg-container > svg {
+    background-color: transparent !important;
+}
+
+.js-plotly-plot .svg-container {
+    background-color: transparent !important;
+}
+
+/* Legend background transparent - KEY FIX */
+.js-plotly-plot .legend .bg,
+.js-plotly-plot rect.bg {
+    fill: transparent !important;
+    fill-opacity: 1 !important;
+}
+
+/* Keep plot controls transparent */
+.modebar-container,
+.modebar {
+    background-color: transparent !important;
+}
+
+/* ========================================
+   VEGA-LITE / ALTAIR CHARTS
+   ======================================== */
+
+/* Vega-Lite chart containers */
+[data-testid="stVegaLiteChart"],
+[data-testid="stArrowVegaLiteChart"] {
+    background-color: transparent !important;
+}
+
+/* Vega-Lite SVG backgrounds */
+.vega-embed svg,
+svg.marks {
+    background-color: transparent !important;
+}
+
+/* Vega-Lite background paths and rects */
+svg.marks path.background,
+svg.marks rect.background {
+    fill: transparent !important;
+}
+
+/* ========================================
+   GENERAL CHART / SVG CATCH-ALL
+   ======================================== */
+
+/* All chart-related SVGs in main content should have transparent backgrounds */
+.main svg {
+    background-color: transparent !important;
+}
+
+.main svg path.background,
+.main svg rect.background {
+    fill: transparent !important;
+}
+
+/* ========================================
+   DATA TABLES - GLIDE DATA EDITOR
+   ======================================== */
+
+/* Make the GlideDataEditor overlay transparent so table is visible */
+.stDataFrameGlideDataEditor {
+    background-color: transparent !important;
+}
+
+/* Target the actual table element with inline styles - override CSS custom properties */
+.stDataFrameGlideDataEditor[style*="--gdg-bg-cell"],
+div[class*="stDataFrameGlideDataEditor"][style] {
+    --gdg-bg-cell: #FFFFFF !important;
+    --gdg-bg-cell-medium: #FFFFFF !important;
+    --gdg-bg-header: #FFFFFF !important;
+    --gdg-bg-header-has-focus: rgba(83, 202, 151, 0.1) !important;
+    --gdg-bg-header-hovered: rgba(83, 202, 151, 0.1) !important;
+    --gdg-bg-group-header: #FFFFFF !important;
+    --gdg-border-color: #dfe2e6 !important;
+    --gdg-horizontal-border-color: #dfe2e6 !important;
+}
+
+/* Legacy dataframe styling */
+[data-testid="stDataFrame"],
+[data-testid="stDataFrameResizable"] {
+    background-color: #FFFFFF !important;
+    border-color: #dfe2e6 !important;
+}
+
+/* ========================================
+   EXPANDERS
+   ======================================== */
+
+/* Main content expanders - white with NO border to prevent double borders */
+[data-testid="stExpander"] {
+    background-color: #FFFFFF !important;
+    /* border: 1px solid #dfe2e6 !important; */ /* Commented out - causes double border */
+    border-radius: 0.5rem !important;
+    overflow: hidden;
+}
+
+/* Expander header - no separate border */
+[data-testid="stExpander"] summary {
+    background-color: #FFFFFF !important;
+    border: none !important;
+}
+
+/* Expander content when open */
+[data-testid="stExpander"] > div:last-child {
+    background-color: #FFFFFF !important;
+    border: none !important;
+}
+
+/* ========================================
+   ALERT/INFO/WARNING BOXES
+   ======================================== */
+
+/* Keep notification boxes with their themed backgrounds */
+[data-testid="stAlert"],
+[data-testid="stNotification"],
+[data-testid="stMarkdown"] [data-testid="stAlert"] {
+    background-color: initial !important;
+}
+
+/* Specific alert types should maintain their color schemes */
+.main [data-testid="stInfo"],
+.main [data-testid="stSuccess"],
+.main [data-testid="stWarning"],
+.main [data-testid="stError"] {
+    background-color: initial !important;
+}
+
+/* ========================================
+   METRIC CARDS
+   ======================================== */
+
+/* Remove metric borders when inside columns within a bordered container */
+[data-testid="stMetric"] {
+    background-color: transparent !important;
+    border: none;
+}
+
+/* ========================================
+   BUTTONS AND INTERACTIVE ELEMENTS
+   ======================================== */
+
+/* Primary buttons - brand green */
+button[kind="primary"] {
+    background-color: #53CA97 !important;
+    color: #1b2222 !important;
+    border: none !important;
+}
+
+button[kind="primary"]:hover {
+    background-color: #45b585 !important;
+    color: #1b2222 !important;
+}
+
+/* Secondary buttons - transparent with border */
+button[kind="secondary"] {
+    background-color: transparent !important;
+    color: #1b2222 !important;
+    border: 1px solid #dfe2e6 !important;
+}
+
+button[kind="secondary"]:hover {
+    background-color: #f5f6f8 !important;
+    border-color: #53CA97 !important;
+}
+
+/* ========================================
+   TABS
+   ======================================== */
+
+/* Active tab indicator - brand green */
+button[data-baseweb="tab"][aria-selected="true"] {
+    border-bottom-color: #53CA97 !important;
+}
+
+/* ========================================
+   TEXT AND READABILITY
+   ======================================== */
+
+/* Ensure text elements have transparent backgrounds */
+.main h1, .main h2, .main h3, .main h4, .main h5, .main h6,
+.main p, .main span, .main label, .main div[data-testid="stMarkdownContainer"] {
+    background-color: transparent !important;
+}
+
+/* Main content text color - brand black */
+.main .block-container {
+    color: #1b2222 !important;
+}
+
+/* Headers */
+.main h1, .main h2, .main h3, .main h4, .main h5, .main h6 {
+    color: #1b2222 !important;
+}
+
+/* Paragraphs */
+.main p {
+    color: #1b2222 !important;
+}
+
+/* Links - brand green */
+.main a {
+    color: #53CA97 !important;
+}
+
+.main a:hover {
+    color: #45b585 !important;
+}
+
+/* ========================================
+   PROTECT INTERACTIVE ELEMENTS
+   ======================================== */
+
+/* All form inputs and interactive elements - light gray background to stand out */
+.main input:not([type="checkbox"]):not([type="radio"]),
+.main select,
+.main textarea,
+.main [role="combobox"],
+.main [role="spinbutton"],
+.main [data-testid="stSelectbox"] > div,
+.main [data-testid="stMultiSelect"] > div,
+.main [data-testid="stNumberInput"] > div,
+.main [data-testid="stTextInput"] > div,
+.main [data-testid="stTextArea"] > div,
+.main [data-testid="stDateInput"] > div,
+.main [data-testid="stTimeInput"] > div {
+    background-color: #f5f6f8 !important;
+    border: 1px solid #e6eaf1 !important;
+    border-radius: 0.25rem !important;
+}
+
+/* Nested input containers */
+.main [data-testid="stSelectbox"] > div > div,
+.main [data-testid="stMultiSelect"] > div > div,
+.main [data-testid="stNumberInput"] > div > div,
+.main [data-testid="stTextInput"] > div > div,
+.main [data-testid="stTextArea"] > div > div {
+    background-color: #f5f6f8 !important;
+    border-color: #e6eaf1 !important;
+}
+
+/* Hover state - brand green border */
+.main [data-testid="stSelectbox"] > div:hover,
+.main [data-testid="stMultiSelect"] > div:hover,
+.main input:hover,
+.main select:hover,
+.main textarea:hover {
+    border-color: #53CA97 !important;
+}
+
+/* Focus state - brand green border with glow */
+.main [data-testid="stSelectbox"] > div:focus-within,
+.main [data-testid="stMultiSelect"] > div:focus-within,
+.main input:focus,
+.main select:focus,
+.main textarea:focus {
+    border-color: #53CA97 !important;
+    box-shadow: 0 0 0 1px #53CA97 !important;
+    outline: none !important;
+}
+
+/* Sliders and other controls should not be forced styled */
+.main [role="slider"],
+.main [data-testid="stSlider"] {
+    background-color: initial !important;
+}
+
+/* NOTE: Chat input styling is handled directly on pages/7_AI_Analyst.py 
+   using inline CSS for maximum specificity */

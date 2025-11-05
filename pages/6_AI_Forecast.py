@@ -7,10 +7,13 @@ from datetime import datetime
 # Direct imports from your project modules
 from forecasting import determine_effective_projection_rates, calculate_ai_forecast_core
 from constants import *
-from helpers import calculate_avg_lag_generic, format_performance_df
+from helpers import calculate_avg_lag_generic, format_performance_df, load_css
 
 # --- Page Configuration ---
 st.set_page_config(page_title="AI Forecast", page_icon="🤖", layout="wide")
+
+# Load custom CSS for branded theme
+load_css("custom_theme.css")
 
 # --- Sidebar ---
 with st.sidebar:

@@ -6,10 +6,13 @@ from datetime import datetime
 # Direct imports from modules in the root directory
 from forecasting import determine_effective_projection_rates, calculate_pipeline_projection, generate_funnel_narrative
 from constants import *
-from helpers import format_performance_df # We still need this helper
+from helpers import format_performance_df, load_css
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Funnel Analysis", page_icon="🔬", layout="wide")
+
+# Load custom CSS for branded theme
+load_css("custom_theme.css")
 
 # --- Sidebar ---
 with st.sidebar:

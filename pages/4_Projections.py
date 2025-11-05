@@ -6,12 +6,16 @@ from datetime import datetime
 
 from forecasting import determine_effective_projection_rates, calculate_projections
 from constants import *
+from helpers import load_css
 
 st.set_page_config(
     page_title="Projections",
     page_icon="📈",
     layout="wide"
 )
+
+# Load custom CSS for branded theme
+load_css("custom_theme.css")
 
 with st.sidebar:
     st.logo("assets/logo.png", link="https://1nhealth.com")
