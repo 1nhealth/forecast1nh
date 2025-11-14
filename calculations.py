@@ -5,7 +5,7 @@ import numpy as np
 
 from constants import *
 # Correctly import the generic helper functions
-from helpers import calculate_avg_lag_generic, is_contact_attempt
+from helpers import calculate_avg_lag_generic, is_contact_attempt, is_business_hours
 
 def calculate_overall_inter_stage_lags(_processed_df, ordered_stages, ts_col_map):
     if _processed_df is None or _processed_df.empty or not ordered_stages or not ts_col_map:
@@ -75,7 +75,7 @@ def calculate_proforma_metrics(_processed_df, ordered_stages, ts_col_map, monthl
     return proforma_metrics
 
 
-def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected_site="Overall", contact_status_list=None):
+def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected_site="Overall", contact_status_list=None, business_hours_only=False):
     if df is None or df.empty:
         return {'avg_sts_to_first_action': np.nan, 'avg_time_between_site_contacts': np.nan, 'avg_sts_to_appt': np.nan}
 
@@ -99,24 +99,46 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
         if pd.isna(sts_time):
             return pd.NaT
 
+        # Get future stage events and filter for business hours if requested
         future_stage_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
+        if business_hours_only and not future_stage_events.empty:
+            future_stage_events = future_stage_events[future_stage_events.apply(is_business_hours)]
         earliest_stage_event = future_stage_events.min() if not future_stage_events.empty else pd.NaT
 
+        # Get future history events and filter for business hours if requested
         history = row.get(status_history_col, [])
         earliest_history_event = pd.NaT
         if isinstance(history, list) and history:
-            future_history_events = [event_dt for event_name, event_dt in history if pd.notna(event_dt) and event_dt > sts_time]
+            if business_hours_only:
+                future_history_events = [event_dt for event_name, event_dt in history
+                                       if pd.notna(event_dt) and event_dt > sts_time and is_business_hours(event_dt)]
+            else:
+                future_history_events = [event_dt for event_name, event_dt in history
+                                       if pd.notna(event_dt) and event_dt > sts_time]
             if future_history_events:
                 earliest_history_event = min(future_history_events)
 
         overall_earliest_event = pd.Series([earliest_stage_event, earliest_history_event]).min()
-        
+
         return overall_earliest_event
 
     first_actions = site_df.apply(find_first_action_after_sts, axis=1)
-    
-    time_to_first_action = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / (60*60*24)
-    avg_sts_to_first_action = time_to_first_action.mean()
+
+    # Calculate time to first action using business hours if requested
+    if business_hours_only:
+        from helpers import calculate_business_hours_between
+        time_to_first_action_list = []
+        for idx in site_df.index:
+            sts_time = site_df.loc[idx, sts_ts_col]
+            first_action_time = first_actions.loc[idx]
+            if pd.notna(sts_time) and pd.notna(first_action_time):
+                bh_time = calculate_business_hours_between(sts_time, first_action_time)
+                if not pd.isna(bh_time):
+                    time_to_first_action_list.append(bh_time)
+        avg_sts_to_first_action = np.mean(time_to_first_action_list) if time_to_first_action_list else np.nan
+    else:
+        time_to_first_action = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / (60*60*24)
+        avg_sts_to_first_action = time_to_first_action.mean()
 
     all_contact_deltas = []
     if status_history_col in site_df.columns:
@@ -134,16 +156,31 @@ def calculate_site_operational_kpis(df, ts_col_map, status_history_col, selected
             start_window = sts_time
             end_window = appt_time if pd.notna(appt_time) else pd.Timestamp.max
 
-            site_attempt_timestamps = sorted([
-                event_dt for event_name, event_dt in history 
-                if event_name in contact_status_list and event_dt > start_window and event_dt < end_window
-            ])
-            
+            # Build list of site contact timestamps, filtering for business hours if requested
+            if business_hours_only:
+                site_attempt_timestamps = sorted([
+                    event_dt for event_name, event_dt in history
+                    if event_name in contact_status_list and event_dt > start_window and event_dt < end_window and is_business_hours(event_dt)
+                ])
+            else:
+                site_attempt_timestamps = sorted([
+                    event_dt for event_name, event_dt in history
+                    if event_name in contact_status_list and event_dt > start_window and event_dt < end_window
+                ])
+
+            # Calculate time between consecutive contacts
             if len(site_attempt_timestamps) > 1:
-                all_contact_deltas.extend(np.diff(site_attempt_timestamps))
+                if business_hours_only:
+                    from helpers import calculate_business_hours_between
+                    for i in range(len(site_attempt_timestamps) - 1):
+                        bh_diff = calculate_business_hours_between(site_attempt_timestamps[i], site_attempt_timestamps[i + 1])
+                        if not pd.isna(bh_diff) and bh_diff >= 0:
+                            all_contact_deltas.append(pd.Timedelta(days=bh_diff))
+                else:
+                    all_contact_deltas.extend(np.diff(site_attempt_timestamps))
 
     avg_between_site_contacts = pd.Series(all_contact_deltas).mean().total_seconds() / (60 * 60 * 24) if all_contact_deltas else np.nan
-    avg_sts_to_appt = calculate_avg_lag_generic(site_df, sts_ts_col, appt_ts_col)
+    avg_sts_to_appt = calculate_avg_lag_generic(site_df, sts_ts_col, appt_ts_col, business_hours_only=business_hours_only)
 
     return {
         'avg_sts_to_first_action': avg_sts_to_first_action,
@@ -197,7 +234,7 @@ def calculate_stale_referrals(df, ts_col_map, status_history_col, selected_site=
     
     return stale_count
 
-def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
+def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall", business_hours_only=False):
     if df is None or df.empty:
         return pd.DataFrame()
 
@@ -214,16 +251,30 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
         return pd.DataFrame()
 
     all_ts_cols_after_sts = [
-        v for k, v in ts_col_map.items() 
+        v for k, v in ts_col_map.items()
         if k not in ["Passed Online Form", "Pre-Screening Activities", "Sent To Site"] and v in site_df.columns
     ]
-    
+
     def find_first_action_after_sts(row):
         sts_time = row[sts_ts_col]
         future_events = row[all_ts_cols_after_sts][row[all_ts_cols_after_sts] > sts_time]
+
+        # Filter for business hours if requested
+        if business_hours_only and not future_events.empty:
+            future_events = future_events[future_events.apply(is_business_hours)]
+
         return future_events.min() if not future_events.empty else pd.NaT
 
     first_actions = site_df.apply(find_first_action_after_sts, axis=1)
+
+    # Filter out referrals whose first action wasn't during business hours (if filtering enabled)
+    if business_hours_only:
+        business_hours_mask = first_actions.apply(lambda x: is_business_hours(x) if pd.notna(x) else False)
+        site_df = site_df[business_hours_mask].copy()
+        first_actions = first_actions[business_hours_mask]
+
+    if site_df.empty:
+        return pd.DataFrame()
     
     site_df['ttfc_hours'] = (first_actions - site_df[sts_ts_col]).dt.total_seconds() / 3600
 
@@ -262,7 +313,7 @@ def calculate_site_ttfc_effectiveness(df, ts_col_map, selected_site="Overall"):
     
     return result
 
-def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall", contact_status_list=None):
+def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_col, selected_site="Overall", contact_status_list=None, business_hours_only=False):
     if df is None or df.empty or not ts_col_map or status_history_col not in df.columns:
         return pd.DataFrame()
 
@@ -277,15 +328,16 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
     lost_ts_col = ts_col_map.get("Lost")
     icf_ts_col = ts_col_map.get("Signed ICF")
     enr_ts_col = ts_col_map.get("Enrolled")
+    screenfailed_ts_col = ts_col_map.get("Screen Failed")
 
-    for col in [sts_ts_col, appt_ts_col, lost_ts_col, icf_ts_col, enr_ts_col]:
+    for col in [sts_ts_col, appt_ts_col, lost_ts_col, icf_ts_col, enr_ts_col, screenfailed_ts_col]:
         if col and col not in analysis_df.columns:
             analysis_df[col] = pd.NaT
 
     analysis_df = analysis_df.dropna(subset=[sts_ts_col]).copy()
     if analysis_df.empty:
         return pd.DataFrame()
-        
+
     # FIX IS HERE: Handle the default value in the PARENT function's scope.
     if contact_status_list is None:
         contact_status_list = []
@@ -294,10 +346,23 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
         sts_time = row[sts_ts_col]
         appt_time = row.get(appt_ts_col)
         lost_time = row.get(lost_ts_col)
+        icf_time = row.get(icf_ts_col)
+        enr_time = row.get(enr_ts_col)
+        screenfailed_time = row.get(screenfailed_ts_col)
         history = row[status_history_col]
 
+        # Check if referral has left StS (progressed to any later stage)
+        has_left_sts = (
+            pd.notna(appt_time) or
+            pd.notna(lost_time) or
+            pd.notna(icf_time) or
+            pd.notna(enr_time) or
+            (screenfailed_ts_col and pd.notna(screenfailed_time))
+        )
+
         if not isinstance(history, list):
-            return 0
+            # If no history but referral left StS, count the transition as 1 attempt
+            return 1 if has_left_sts else 0
 
         end_window = pd.Timestamp.max
         if pd.notna(appt_time) and pd.notna(lost_time):
@@ -307,18 +372,20 @@ def calculate_site_contact_attempt_effectiveness(df, ts_col_map, status_history_
         elif pd.notna(lost_time):
             end_window = lost_time
 
-        attempt_count = 0
-        for event_name, event_dt in history:
-            if event_name in contact_status_list:
-                if sts_time < event_dt < end_window:
-                    attempt_count += 1
+        # Count attempts - NOTE: We count ALL attempts regardless of business_hours_only setting
+        # because "0 attempts" means "no attempts at all", not "no attempts during business hours"
+        # A referral with an attempt at 6 PM should count as "1 attempt", not "0 attempts"
+        attempt_count = sum(1 for event_name, event_dt in history
+                           if event_name in contact_status_list
+                           and sts_time < event_dt <= end_window)
+
+        # If referral has left StS, ensure at least 1 attempt (the transition itself counts)
+        if has_left_sts:
+            attempt_count = max(1, attempt_count)
+
         return attempt_count
 
     analysis_df['site_attempt_count'] = analysis_df.apply(count_logged_site_attempts, axis=1)
-    
-    if appt_ts_col:
-        mask = (analysis_df[appt_ts_col].notna()) & (analysis_df['site_attempt_count'] == 0)
-        analysis_df.loc[mask, 'site_attempt_count'] = 1
 
     result = analysis_df.groupby('site_attempt_count').agg(
         Referral_Count=('site_attempt_count', 'size'),
@@ -411,7 +478,7 @@ def calculate_site_performance_over_time(df, ts_col_map, status_history_col, sel
 
     return weekly_summary
 
-def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, status_history_col):
+def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, status_history_col, business_hours_only=False):
     if _processed_df is None or 'Site' not in _processed_df.columns:
         return pd.DataFrame()
         
@@ -465,9 +532,13 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
             
             def has_post_sts_action(row):
                 sts_time = row[sts_ts_col]
+                # Check timestamp columns for post-StS actions
+                # NOTE: We check ALL hours here, regardless of business_hours_only setting
+                # because "awaiting action" means "no action at all", not "no action during business hours"
                 for ts_col in all_ts_cols_after_sts:
                     if pd.notna(row[ts_col]) and row[ts_col] > sts_time:
                         return True
+                # Check status history for post-StS actions
                 history = row.get(status_history_col, [])
                 if isinstance(history, list):
                     for _, event_dt in history:

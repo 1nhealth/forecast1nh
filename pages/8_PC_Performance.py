@@ -64,19 +64,32 @@ else:
     filtered_df = processed_data
 st.divider()
 
+# Business Hours Toggle
+with st.container(border=True):
+    st.subheader("⏰ Time Metrics View Option")
+    business_hours_only = st.radio(
+        "Select time calculation method:",
+        options=[False, True],
+        format_func=lambda x: "All Hours (24/7)" if not x else "Business Hours Only (Mon-Fri, 9am-5pm)",
+        horizontal=True,
+        help="Choose whether to calculate time metrics using all hours or only business hours (Mon-Fri, 9am-5pm). Business hours mode excludes weekends and after-hours activity."
+    )
+
+st.divider()
+
 with st.spinner("Analyzing status histories for PC activity in selected date range..."):
     if parsed_status_history_col not in filtered_df.columns:
         st.error(f"The required column '{parsed_status_history_col}' was not found in the processed data.")
         st.stop()
 
-    contact_heatmap, sts_heatmap = calculate_heatmap_data(filtered_df, ts_col_map, parsed_status_history_col)
-    time_metrics = calculate_average_time_metrics(filtered_df, ts_col_map, parsed_status_history_col)
+    contact_heatmap, sts_heatmap = calculate_heatmap_data(filtered_df, ts_col_map, parsed_status_history_col, business_hours_only=business_hours_only)
+    time_metrics = calculate_average_time_metrics(filtered_df, ts_col_map, parsed_status_history_col, business_hours_only=business_hours_only)
     top_flows = calculate_top_status_flows(filtered_df, ts_col_map, parsed_status_history_col)
-    ttfc_df = calculate_ttfc_effectiveness(filtered_df, ts_col_map)
-    attempt_effectiveness_df = calculate_contact_attempt_effectiveness(filtered_df, ts_col_map, parsed_status_history_col)
+    ttfc_df = calculate_ttfc_effectiveness(filtered_df, ts_col_map, business_hours_only=business_hours_only)
+    attempt_effectiveness_df = calculate_contact_attempt_effectiveness(filtered_df, ts_col_map, parsed_status_history_col, business_hours_only=business_hours_only)
     over_time_df = calculate_performance_over_time(filtered_df, ts_col_map)
     # --- NEW: Call the analysis function ---
-    heatmap_insights = analyze_heatmap_efficiency(contact_heatmap, sts_heatmap)
+    heatmap_insights = analyze_heatmap_efficiency(contact_heatmap, sts_heatmap, business_hours_only=business_hours_only)
 
 st.header("Activity Heatmaps")
 st.markdown("Visualizing when key activities occur during the week.")
@@ -98,44 +111,102 @@ with col2, st.container(border=True):
     else:
         st.info("No 'Sent To Site' data found in the selected date range.")
 
-# --- NEW SECTION: Display Heatmap Insights ---
-st.header("Strategic Contact Insights")
-st.markdown("Based on an analysis of contact attempts vs. successful 'Sent to Site' outcomes.")
+# --- NEW SECTION: Display Call Timing Recommendations ---
+st.header("Call Timing Recommendations")
+st.markdown("**Optimize your calling strategy** based on historical success rates (Sent to Site conversions).")
 
 if not heatmap_insights:
-    st.info("Not enough data to generate strategic contact insights.")
+    st.info("Not enough data to generate call timing recommendations.")
 else:
-    insight_cols = st.columns(3)
-    with insight_cols[0], st.container(border=True, height=250):
-        st.subheader("📈 Best for Volume")
-        st.caption("Times with high contact volume that also result in high 'Sent to Site' volume.")
-        if heatmap_insights.get("volume_best"):
-            for item in heatmap_insights["volume_best"]:
-                st.markdown(f"- **{item}**")
-        else:
-            st.write("No distinct high-volume/high-success time slots found.")
-            
-    with insight_cols[1], st.container(border=True, height=250):
-        st.subheader("🎯 Most Efficient")
-        st.caption("Times with the best conversion of contacts to 'Sent to Site'.")
-        if heatmap_insights.get("most_efficient"):
-            for item in heatmap_insights["most_efficient"]:
-                st.markdown(f"- **{item}**")
-        else:
-            st.write("No distinct high-efficiency time slots found.")
+    # Group recommendations by day
+    from collections import defaultdict
 
-    with insight_cols[2], st.container(border=True, height=250):
-        st.subheader("⚠️ Least Efficient")
-        st.caption("Times with high contact volume but low 'Sent to Site' outcomes.")
-        if heatmap_insights.get("least_efficient"):
-            for item in heatmap_insights["least_efficient"]:
-                st.markdown(f"- **{item}**")
-        else:
-            st.write("No distinct low-efficiency time slots found.")
+    days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    recommendations_by_day = defaultdict(lambda: {'best': [], 'avoid': []})
+
+    # Parse best times
+    for time_str in heatmap_insights.get("best_times", []):
+        if ', ' in time_str:
+            day, time = time_str.split(', ', 1)
+            recommendations_by_day[day]['best'].append(time)
+
+    # Parse avoid times
+    for time_str in heatmap_insights.get("avoid_times", []):
+        if ', ' in time_str:
+            day, time = time_str.split(', ', 1)
+            recommendations_by_day[day]['avoid'].append(time)
+
+    # Get days that have recommendations
+    days_with_recommendations = [day for day in days_order
+                                  if recommendations_by_day[day]['best'] or recommendations_by_day[day]['avoid']]
+
+    # Display recommendations grouped by day - 2 cards per row
+    for i in range(0, len(days_with_recommendations), 2):
+        # Create a row with 2 columns
+        row_cols = st.columns(2)
+
+        # First card in the row
+        day1 = days_with_recommendations[i]
+        with row_cols[0]:
+            with st.container(border=True):
+                st.markdown(f"### {day1}")
+
+                # Create two columns within the card - Best on left, Avoid on right
+                day_cols = st.columns(2)
+
+                # Best times on the left
+                with day_cols[0]:
+                    st.markdown("**:green[✓ Best Times]**")
+                    if recommendations_by_day[day1]['best']:
+                        for time in recommendations_by_day[day1]['best']:
+                            st.markdown(f":green[●] {time}")
+                    else:
+                        st.caption("No standout times")
+
+                # Avoid times on the right
+                with day_cols[1]:
+                    st.markdown("**:red[✗ Avoid]**")
+                    if recommendations_by_day[day1]['avoid']:
+                        for time in recommendations_by_day[day1]['avoid']:
+                            st.markdown(f":red[●] {time}")
+                    else:
+                        st.caption("No times to avoid")
+
+        # Second card in the row (if it exists)
+        if i + 1 < len(days_with_recommendations):
+            day2 = days_with_recommendations[i + 1]
+            with row_cols[1]:
+                with st.container(border=True):
+                    st.markdown(f"### {day2}")
+
+                    # Create two columns within the card - Best on left, Avoid on right
+                    day_cols = st.columns(2)
+
+                    # Best times on the left
+                    with day_cols[0]:
+                        st.markdown("**:green[✓ Best Times]**")
+                        if recommendations_by_day[day2]['best']:
+                            for time in recommendations_by_day[day2]['best']:
+                                st.markdown(f":green[●] {time}")
+                        else:
+                            st.caption("No standout times")
+
+                    # Avoid times on the right
+                    with day_cols[1]:
+                        st.markdown("**:red[✗ Avoid]**")
+                        if recommendations_by_day[day2]['avoid']:
+                            for time in recommendations_by_day[day2]['avoid']:
+                                st.markdown(f":red[●] {time}")
+                        else:
+                            st.caption("No times to avoid")
 
 st.divider()
 
-st.header("Key Performance Indicators")
+# Show which mode is active
+mode_label = ":blue[Business Hours Only (Mon-Fri, 9am-5pm)]" if business_hours_only else ":gray[All Hours (24/7)]"
+st.header(f"Key Performance Indicators - {mode_label}")
+st.caption("These metrics reflect the selected time calculation method above.")
+
 kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
 with kpi_col1, st.container(border=True):
     value = time_metrics.get('avg_time_to_first_contact')

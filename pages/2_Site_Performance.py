@@ -4,12 +4,13 @@ import pandas as pd
 from scoring import score_sites
 from helpers import format_performance_df, format_days_to_dhm, is_contact_attempt, load_css
 from calculations import (
-    calculate_site_operational_kpis, 
-    calculate_site_ttfc_effectiveness, 
+    calculate_site_operational_kpis,
+    calculate_site_ttfc_effectiveness,
     calculate_site_contact_attempt_effectiveness,
     calculate_site_performance_over_time,
     calculate_lost_reasons_after_sts,
-    calculate_stale_referrals
+    calculate_stale_referrals,
+    calculate_enhanced_site_metrics
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -62,15 +63,37 @@ with st.container(border=True):
     st.subheader("Site Operational Analysis")
     st.markdown("Analyze site-level efficiency. Select a specific site or view the overall average for all metrics in this section.")
 
-    site_list = st.session_state.enhanced_site_metrics_df['Site'].unique().tolist()
-    site_list = [site for site in site_list if site != "Unassigned Site"]
-    options = ["Overall"] + sorted(site_list)
-    
-    selected_site = st.selectbox(
-        "Select a Site to Analyze (or Overall)", 
-        options=options,
-        key="site_kpi_selector"
-    )
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        site_list = st.session_state.enhanced_site_metrics_df['Site'].unique().tolist()
+        site_list = [site for site in site_list if site != "Unassigned Site"]
+        options = ["Overall"] + sorted(site_list)
+
+        selected_site = st.selectbox(
+            "Select a Site to Analyze (or Overall)",
+            options=options,
+            key="site_kpi_selector"
+        )
+    with col2:
+        business_hours_only_site = st.toggle(
+            "Business Hours Only",
+            value=False,
+            key="business_hours_toggle_site",
+            help="Filter to only include site actions during business hours (Mon-Fri 9am-5pm)"
+        )
+
+    # Recalculate enhanced_site_metrics_df with business hours filter if enabled
+    # This ensures "Total Referrals Awaiting First Site Action" aligns with Contact Attempt Effectiveness
+    if business_hours_only_site:
+        st.session_state.site_page_enhanced_metrics_df = calculate_enhanced_site_metrics(
+            st.session_state.referral_data_processed,
+            st.session_state.ordered_stages,
+            st.session_state.ts_col_map,
+            "Parsed_Lead_Status_History",
+            business_hours_only=True
+        )
+    else:
+        st.session_state.site_page_enhanced_metrics_df = st.session_state.enhanced_site_metrics_df
 
     # --- THIS BLOCK IS NOW SYNTACTICALLY CORRECT ---
     site_kpis = calculate_site_operational_kpis(
@@ -78,7 +101,8 @@ with st.container(border=True):
         st.session_state.ts_col_map,
         "Parsed_Lead_Status_History",
         selected_site, # <-- The missing comma has been added here
-        contact_status_list=selected_contact_statuses
+        contact_status_list=selected_contact_statuses,
+        business_hours_only=business_hours_only_site
     )
     
     lost_reasons = calculate_lost_reasons_after_sts(
@@ -119,8 +143,8 @@ with st.container(border=True):
     
     st.divider()
     st.subheader(f"Time to First Action Effectiveness: {selected_site}")
-    
-    site_effectiveness_df = calculate_site_ttfc_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, selected_site)
+
+    site_effectiveness_df = calculate_site_ttfc_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, selected_site, business_hours_only=business_hours_only_site)
     if site_effectiveness_df.empty or site_effectiveness_df['Attempts'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze first action effectiveness.")
     else:
@@ -134,8 +158,8 @@ with st.container(border=True):
     
     st.divider()
     st.subheader(f"Contact Attempt Effectiveness: {selected_site}")
-    
-    site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, "Parsed_Lead_Status_History", selected_site, contact_status_list=selected_contact_statuses)
+
+    site_contact_effectiveness_df = calculate_site_contact_attempt_effectiveness(st.session_state.referral_data_processed, st.session_state.ts_col_map, "Parsed_Lead_Status_History", selected_site, contact_status_list=selected_contact_statuses, business_hours_only=business_hours_only_site)
     if site_contact_effectiveness_df.empty or 'Total Referrals' not in site_contact_effectiveness_df.columns or site_contact_effectiveness_df['Total Referrals'].sum() == 0:
         st.info(f"Not enough data for '{selected_site}' to analyze contact attempt effectiveness.")
     else:
@@ -247,9 +271,9 @@ with st.expander("Adjust Site Performance Scoring Weights"):
             
         total_weight = sum(abs(w) for w in weights.values())
         weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
-        
-        if not st.session_state.enhanced_site_metrics_df.empty:
-            st.session_state.ranked_sites_df = score_sites(st.session_state.enhanced_site_metrics_df, weights_normalized)
+
+        if not st.session_state.site_page_enhanced_metrics_df.empty:
+            st.session_state.ranked_sites_df = score_sites(st.session_state.site_page_enhanced_metrics_df, weights_normalized)
         else:
             st.session_state.ranked_sites_df = pd.DataFrame()
 
