@@ -576,5 +576,231 @@ button[data-baseweb="tab"][aria-selected="true"] {
     background-color: initial !important;
 }
 
-/* NOTE: Chat input styling is handled directly on pages/7_AI_Analyst.py 
+/* NOTE: Chat input styling is handled directly on pages/7_AI_Analyst.py
    using inline CSS for maximum specificity */
+
+/* ========================================
+   COMPARISON ANALYSIS STYLING
+   ======================================== */
+
+/* Delta indicators - color-coded changes */
+.delta-positive {
+    color: #53CA97 !important;
+    font-weight: 600;
+}
+
+.delta-negative {
+    color: #E76F51 !important;
+    font-weight: 600;
+}
+
+.delta-neutral {
+    color: #7991C6 !important;
+    font-weight: 400;
+}
+
+/* Comparison period containers */
+.comparison-period-a {
+    border-left: 4px solid #7991C6;
+    padding-left: 12px;
+    background-color: rgba(121, 145, 198, 0.05);
+}
+
+.comparison-period-b {
+    border-left: 4px solid #53CA97;
+    padding-left: 12px;
+    background-color: rgba(83, 202, 151, 0.05);
+}
+
+/* Rank change indicators */
+.rank-up {
+    color: #53CA97;
+    font-weight: 600;
+}
+
+.rank-down {
+    color: #E76F51;
+    font-weight: 600;
+}
+
+.rank-same {
+    color: #7991C6;
+    font-weight: 400;
+}
+
+/* Comparison tables */
+.comparison-table {
+    font-size: 0.9rem;
+}
+
+.comparison-table .delta-cell {
+    background-color: #f5f6f8;
+    font-weight: 600;
+    padding: 0.5rem;
+}
+
+/* Improvement highlighting for table cells */
+.cell-improved {
+    background-color: #E8F5E9;
+    color: #2E7D32;
+}
+
+.cell-declined {
+    background-color: #FFEBEE;
+    color: #C62828;
+}
+
+/* Comparison summary cards */
+.comparison-summary-card {
+    background-color: #FFFFFF;
+    border: 1px solid #dfe2e6;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.comparison-summary-card .metric-name {
+    font-size: 0.875rem;
+    color: #7991C6;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.comparison-summary-card .metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1b2222;
+    margin: 0.5rem 0;
+}
+
+.comparison-summary-card .metric-delta {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* Period labels in comparison views */
+.period-label {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-right: 0.5rem;
+}
+
+.period-label-a {
+    background-color: rgba(121, 145, 198, 0.15);
+    color: #7991C6;
+}
+
+.period-label-b {
+    background-color: rgba(83, 202, 151, 0.15);
+    color: #53CA97;
+}
+
+/* Comparison validation messages */
+.comparison-validation-warning {
+    background-color: #FFF3CD;
+    border-left: 4px solid #FFC107;
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 0.25rem;
+}
+
+.comparison-validation-error {
+    background-color: #FFEBEE;
+    border-left: 4px solid #E76F51;
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 0.25rem;
+}
+
+/* AI insights section styling */
+.ai-insights-container {
+    background-color: #FFFFFF;
+    border: 2px solid #53CA97;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin: 2rem 0;
+}
+
+.ai-insights-container h3 {
+    color: #53CA97;
+    margin-bottom: 1rem;
+}
+
+.ai-insights-bullet {
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+    position: relative;
+}
+
+.ai-insights-bullet::before {
+    content: "•";
+    color: #53CA97;
+    font-weight: bold;
+    font-size: 1.25rem;
+    position: absolute;
+    left: 0;
+}
+
+.ai-insights-summary {
+    background-color: #f5f6f8;
+    padding: 1.25rem;
+    border-radius: 0.5rem;
+    border-left: 4px solid #53CA97;
+    margin-top: 1rem;
+}
+
+/* Statistical significance indicators */
+.stat-sig-indicator {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+
+.stat-sig-high {
+    background-color: #E8F5E9;
+    color: #2E7D32;
+}
+
+.stat-sig-medium {
+    background-color: #FFF3CD;
+    color: #F57C00;
+}
+
+.stat-sig-low {
+    background-color: #E3F2FD;
+    color: #1976D2;
+}
+
+.stat-sig-none {
+    background-color: #F5F5F5;
+    color: #757575;
+}
+
+/* Comparison chart legends */
+.comparison-legend-item {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 1.5rem;
+}
+
+.comparison-legend-marker {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    margin-right: 0.5rem;
+}
+
+.comparison-legend-marker-a {
+    background-color: #7991C6;
+}
+
+.comparison-legend-marker-b {
+    background-color: #53CA97;
+}

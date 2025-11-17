@@ -610,6 +610,7 @@ def calculate_enhanced_ad_metrics(_processed_df, ordered_stages, ts_col_map, gro
         
         metrics['Qualified to StS %'] = sts_count / pof_count if pof_count > 0 else 0.0
         metrics['StS to Appt %'] = appt_count / sts_count if sts_count > 0 else 0.0
+        metrics['Qualified to Appt %'] = appt_count / pof_count if pof_count > 0 else 0.0
         metrics['Qualified to ICF %'] = icf_count / pof_count if pof_count > 0 else 0.0
         metrics['Qualified to Enrollment %'] = enr_count / pof_count if pof_count > 0 else 0.0
         metrics['ICF to Enrollment %'] = enr_count / icf_count if icf_count > 0 else 0.0
