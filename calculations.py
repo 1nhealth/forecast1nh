@@ -549,10 +549,29 @@ def calculate_enhanced_site_metrics(_processed_df, ordered_stages, ts_col_map, s
             sts_df['has_action'] = sts_df.apply(has_post_sts_action, axis=1)
             awaiting_action_count = len(sts_df[~sts_df['has_action']])
             metrics['Total Referrals Awaiting First Site Action'] = awaiting_action_count
-            
-            ops_kpis_static = calculate_site_operational_kpis(group_df, ts_col_map, status_history_col, site_name, contact_status_list=[])
+
+            # Auto-detect contact statuses from status history
+            from helpers import is_contact_attempt
+            contact_statuses = set()
+            if status_history_col in group_df.columns:
+                for history_list in group_df[status_history_col].dropna():
+                    if isinstance(history_list, list):
+                        for event_name, _ in history_list:
+                            if is_contact_attempt(event_name):
+                                contact_statuses.add(event_name)
+
+            ops_kpis_static = calculate_site_operational_kpis(
+                group_df, ts_col_map, status_history_col, site_name,
+                contact_status_list=list(contact_statuses),
+                business_hours_only=business_hours_only
+            )
             metrics['Average time to first site action'] = ops_kpis_static.get('avg_sts_to_first_action')
-            
+            metrics['Avg. Time Between Site Contacts'] = ops_kpis_static.get('avg_time_between_site_contacts')
+
+            # Calculate stale referrals (>7 days awaiting action)
+            stale_count = calculate_stale_referrals(group_df, ts_col_map, status_history_col, site_name, stale_threshold_days=7)
+            metrics['Referrals Awaiting Action > 7 Days'] = stale_count
+
             metrics['StS Contact Rate %'] = (sts_count - awaiting_action_count) / sts_count if sts_count > 0 else 0.0
         
         metrics['Qualified to StS %'] = sts_count / pof_count if pof_count > 0 else 0.0

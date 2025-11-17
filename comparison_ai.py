@@ -429,6 +429,129 @@ MANAGEMENT_SUMMARY:
         }
 
 
+def generate_site_outreach_insights(
+    operational_kpis_a: Dict,
+    operational_kpis_b: Dict,
+    label_a: str,
+    label_b: str
+) -> Dict[str, Any]:
+    """
+    Generate AI insights for site outreach effectiveness comparison.
+
+    Args:
+        operational_kpis_a: Dict with operational KPIs for period A
+        operational_kpis_b: Dict with operational KPIs for period B
+        label_a: Label for period A
+        label_b: Label for period B
+
+    Returns:
+        Dict with 'key_changes' (list) and 'management_summary' (str)
+    """
+    model = initialize_gemini_model()
+
+    if model is None:
+        return {
+            'key_changes': ["AI insights unavailable - Gemini API not configured"],
+            'management_summary': "Unable to generate AI insights at this time."
+        }
+
+    # Extract KPIs
+    time_to_first_a = operational_kpis_a.get('avg_time_to_first_action', 0) or 0
+    time_to_first_b = operational_kpis_b.get('avg_time_to_first_action', 0) or 0
+
+    time_between_a = operational_kpis_a.get('avg_time_between_contacts', 0) or 0
+    time_between_b = operational_kpis_b.get('avg_time_between_contacts', 0) or 0
+
+    time_sts_appt_a = operational_kpis_a.get('avg_time_sts_to_appt', 0) or 0
+    time_sts_appt_b = operational_kpis_b.get('avg_time_sts_to_appt', 0) or 0
+
+    stale_refs_a = operational_kpis_a.get('referrals_awaiting_action_7d', 0) or 0
+    stale_refs_b = operational_kpis_b.get('referrals_awaiting_action_7d', 0) or 0
+
+    # Calculate deltas
+    delta_time_to_first = time_to_first_b - time_to_first_a
+    delta_time_between = time_between_b - time_between_a
+    delta_time_sts_appt = time_sts_appt_b - time_sts_appt_a
+    delta_stale_refs = stale_refs_b - stale_refs_a
+
+    # Calculate percentage changes (avoid division by zero)
+    pct_time_to_first = (delta_time_to_first / time_to_first_a * 100) if time_to_first_a != 0 else 0
+    pct_time_between = (delta_time_between / time_between_a * 100) if time_between_a != 0 else 0
+    pct_time_sts_appt = (delta_time_sts_appt / time_sts_appt_a * 100) if time_sts_appt_a != 0 else 0
+    pct_stale_refs = (delta_stale_refs / stale_refs_a * 100) if stale_refs_a != 0 else 0
+
+    context = f"""
+=== Site Outreach Effectiveness Comparison ===
+Analyzing how quickly sites respond to and process referrals.
+
+Period A ({label_a}):
+- Avg. Time to First Site Action: {time_to_first_a:.1f} days
+- Avg. Time Between Site Contacts: {time_between_a:.1f} days
+- Avg. Time StS to Appt. Sched.: {time_sts_appt_a:.1f} days
+- Referrals Awaiting Action > 7 Days: {stale_refs_a:.0f} referrals
+
+Period B ({label_b}):
+- Avg. Time to First Site Action: {time_to_first_b:.1f} days
+- Avg. Time Between Site Contacts: {time_between_b:.1f} days
+- Avg. Time StS to Appt. Sched.: {time_sts_appt_b:.1f} days
+- Referrals Awaiting Action > 7 Days: {stale_refs_b:.0f} referrals
+
+Changes:
+- Time to First Site Action: {delta_time_to_first:+.1f} days ({pct_time_to_first:+.1f}%)
+- Time Between Site Contacts: {delta_time_between:+.1f} days ({pct_time_between:+.1f}%)
+- Time StS to Appt. Sched.: {delta_time_sts_appt:+.1f} days ({pct_time_sts_appt:+.1f}%)
+- Referrals Awaiting Action > 7 Days: {delta_stale_refs:+.0f} referrals ({pct_stale_refs:+.1f}%)
+"""
+
+    prompt = f"""
+You are analyzing site operational efficiency data for a clinical trial recruitment platform. Your audience is site management and operations teams.
+
+IMPORTANT TERMINOLOGY:
+- "StS" means "Sent to Site" (the stage when a qualified referral is sent to a clinical trial site)
+- "First Site Action" means the first time a site contacts or processes a referral after receiving it
+- "Site Contacts" are follow-up attempts by sites to reach referrals
+- "Appt. Sched." means "Appointment Scheduled"
+- Lower times are better (faster site response = better patient experience)
+- Lower "Referrals Awaiting Action > 7 Days" is better (fewer stale referrals)
+
+{context}
+
+Based on this comparison, provide:
+
+1. **Key Changes** (3-5 bullet points):
+   - Site responsiveness improvements or declines
+   - Impact on patient experience (faster/slower engagement)
+   - Workload indicators (stale referral trends)
+   - Training or process recommendations
+   - Be specific with time metrics and direction of change
+
+2. **Management Summary** (3-4 sentences):
+   - Overall site efficiency trend
+   - Critical areas requiring attention or celebration
+   - Recommended next actions for site coordination teams
+   - Impact on patient conversion potential
+
+Format your response EXACTLY as:
+KEY_CHANGES:
+• [First bullet point]
+• [Second bullet point]
+• [Third bullet point]
+• [etc.]
+
+MANAGEMENT_SUMMARY:
+[Your 3-4 sentence paragraph here]
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        return parse_ai_response(response.text)
+    except Exception as e:
+        return {
+            'key_changes': [f"Error generating insights: {str(e)}"],
+            'management_summary': "Unable to generate AI insights due to an error."
+        }
+
+
 def generate_funnel_insights(
     results_a: Dict,
     results_b: Dict,

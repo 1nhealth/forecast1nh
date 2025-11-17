@@ -335,6 +335,7 @@ def calculate_comparison_for_site_performance(
             'Avg time from StS to ICF': {'inverse': True},
             'Avg time from StS to Enrollment': {'inverse': True},
             'Total Referrals Awaiting First Site Action': {'inverse': True},
+            'Referrals Awaiting Action > 7 Days': {'inverse': True},
             'SF or Lost After ICF %': {'inverse': True},
             'StS to Lost %': {'inverse': True},
             'SF or Lost After ICF Count': {'inverse': True},
@@ -360,6 +361,161 @@ def calculate_comparison_for_site_performance(
             'error': True,
             'validation': {'errors': ['Individual metric selection not yet implemented']}
         }
+
+
+def calculate_comparison_for_site_outreach(
+    df: pd.DataFrame,
+    date_range_a: Tuple,
+    date_range_b: Tuple,
+    ts_col_map: Dict,
+    ordered_stages: List[str],
+    business_hours_only: bool = False
+) -> Dict[str, Any]:
+    """
+    Calculate site outreach effectiveness comparison (Time to First Action) between two date ranges.
+
+    Returns dict with:
+    - period_a: DataFrame for period A (Time to First Action Effectiveness table)
+    - period_b: DataFrame for period B (Time to First Action Effectiveness table)
+    - comparison: Merged DataFrame with deltas
+    - type: 'time_to_first_action'
+    - validation: Validation results
+    """
+    start_a, end_a = date_range_a
+    start_b, end_b = date_range_b
+
+    # Validate date ranges
+    validation = validate_date_ranges(start_a, end_a, start_b, end_b, df)
+
+    if not validation['valid']:
+        return {
+            'error': True,
+            'validation': validation
+        }
+
+    # Filter data by date ranges
+    df_a = filter_by_date_range(df, start_a, end_a)
+    df_b = filter_by_date_range(df, start_b, end_b)
+
+    # Calculate Time to First Action Effectiveness for both periods
+    ttfa_a = calculate_site_ttfc_effectiveness(df_a, ts_col_map, "Overall", business_hours_only=business_hours_only)
+    ttfa_b = calculate_site_ttfc_effectiveness(df_b, ts_col_map, "Overall", business_hours_only=business_hours_only)
+
+    if ttfa_a.empty or ttfa_b.empty:
+        return {
+            'error': True,
+            'validation': {'errors': ['Insufficient data for time to first action effectiveness comparison']}
+        }
+
+    # Calculate aggregate operational KPIs for both periods
+    from calculations import calculate_enhanced_site_metrics
+
+    # Get status history column name (need the actual column name, not from ts_col_map)
+    # The status history column is typically "Parsed_Lead_Status_History"
+    status_history_col = "Parsed_Lead_Status_History"
+
+    # Calculate metrics for all sites at once for period A
+    enhanced_metrics_a = calculate_enhanced_site_metrics(
+        df_a, ordered_stages, ts_col_map, status_history_col, business_hours_only
+    )
+
+    # Calculate metrics for all sites at once for period B
+    enhanced_metrics_b = calculate_enhanced_site_metrics(
+        df_b, ordered_stages, ts_col_map, status_history_col, business_hours_only
+    )
+
+    # Extract and aggregate metrics from period A
+    if not enhanced_metrics_a.empty:
+        # Extract time-based metrics and filter out NaN/None values
+        time_to_first_vals_a = enhanced_metrics_a['Average time to first site action'].dropna()
+        time_between_vals_a = enhanced_metrics_a['Avg. Time Between Site Contacts'].dropna()
+        time_sts_appt_vals_a = enhanced_metrics_a['Avg time from StS to Appt Sched.'].dropna()
+        stale_counts_a = enhanced_metrics_a['Referrals Awaiting Action > 7 Days'].fillna(0)
+
+        # Calculate averages
+        avg_time_to_first_a = time_to_first_vals_a.mean() if len(time_to_first_vals_a) > 0 else 0
+        avg_time_between_a = time_between_vals_a.mean() if len(time_between_vals_a) > 0 else 0
+        avg_time_sts_appt_a = time_sts_appt_vals_a.mean() if len(time_sts_appt_vals_a) > 0 else 0
+        stale_total_a = int(stale_counts_a.sum())
+    else:
+        avg_time_to_first_a = 0
+        avg_time_between_a = 0
+        avg_time_sts_appt_a = 0
+        stale_total_a = 0
+
+    # Extract and aggregate metrics from period B
+    if not enhanced_metrics_b.empty:
+        # Extract time-based metrics and filter out NaN/None values
+        time_to_first_vals_b = enhanced_metrics_b['Average time to first site action'].dropna()
+        time_between_vals_b = enhanced_metrics_b['Avg. Time Between Site Contacts'].dropna()
+        time_sts_appt_vals_b = enhanced_metrics_b['Avg time from StS to Appt Sched.'].dropna()
+        stale_counts_b = enhanced_metrics_b['Referrals Awaiting Action > 7 Days'].fillna(0)
+
+        # Calculate averages
+        avg_time_to_first_b = time_to_first_vals_b.mean() if len(time_to_first_vals_b) > 0 else 0
+        avg_time_between_b = time_between_vals_b.mean() if len(time_between_vals_b) > 0 else 0
+        avg_time_sts_appt_b = time_sts_appt_vals_b.mean() if len(time_sts_appt_vals_b) > 0 else 0
+        stale_total_b = int(stale_counts_b.sum())
+    else:
+        avg_time_to_first_b = 0
+        avg_time_between_b = 0
+        avg_time_sts_appt_b = 0
+        stale_total_b = 0
+
+    # Package operational KPIs
+    operational_kpis = {
+        'period_a': {
+            'avg_time_to_first_action': avg_time_to_first_a,
+            'avg_time_between_contacts': avg_time_between_a,
+            'avg_time_sts_to_appt': avg_time_sts_appt_a,
+            'referrals_awaiting_action_7d': stale_total_a
+        },
+        'period_b': {
+            'avg_time_to_first_action': avg_time_to_first_b,
+            'avg_time_between_contacts': avg_time_between_b,
+            'avg_time_sts_to_appt': avg_time_sts_appt_b,
+            'referrals_awaiting_action_7d': stale_total_b
+        }
+    }
+
+    # Merge and calculate deltas
+    comparison_df = ttfa_a.merge(
+        ttfa_b,
+        on='Time to First Site Action',
+        how='outer',
+        suffixes=('_A', '_B')
+    )
+
+    # Fill NaN for time buckets that only exist in one period
+    for col in comparison_df.columns:
+        if col.endswith('_A') or col.endswith('_B'):
+            comparison_df[col] = comparison_df[col].fillna(0)
+
+    # Calculate deltas for numeric columns
+    numeric_cols_a = [col for col in ttfa_a.columns if col != 'Time to First Site Action' and pd.api.types.is_numeric_dtype(ttfa_a[col])]
+
+    for col in numeric_cols_a:
+        col_a = f"{col}_A"
+        col_b = f"{col}_B"
+
+        if col_a in comparison_df.columns and col_b in comparison_df.columns:
+            # Absolute delta
+            comparison_df[f'{col}_Delta'] = comparison_df[col_b] - comparison_df[col_a]
+
+            # Percentage delta (for percentage change)
+            comparison_df[f'{col}_Delta_Pct'] = (
+                (comparison_df[col_b] - comparison_df[col_a]) / comparison_df[col_a].replace(0, np.nan)
+            ) * 100
+
+    return {
+        'error': False,
+        'period_a': ttfa_a,
+        'period_b': ttfa_b,
+        'comparison': comparison_df,
+        'operational_kpis': operational_kpis,
+        'type': 'time_to_first_action',
+        'validation': validation
+    }
 
 
 def calculate_comparison_for_ad_performance(

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from constants import *
 from comparison_calculations import (
     calculate_comparison_for_site_performance,
+    calculate_comparison_for_site_outreach,
     calculate_comparison_for_ad_performance,
     calculate_comparison_for_pc_performance,
     calculate_comparison_for_funnel,
@@ -153,6 +154,14 @@ if category in ["Site Performance", "PC Performance"]:
         key="comparison_business_hours",
         help="Filter calculations to only include actions during business hours"
     )
+
+    # Clear results if business hours setting changes
+    if 'last_business_hours_setting' not in st.session_state:
+        st.session_state.last_business_hours_setting = business_hours_only
+    elif st.session_state.last_business_hours_setting != business_hours_only:
+        st.session_state.comparison_results = None
+        st.session_state.comparison_ai_insights = None
+        st.session_state.last_business_hours_setting = business_hours_only
 else:
     business_hours_only = False
 
@@ -160,7 +169,18 @@ else:
 if category == "Site Performance":
     with st.container(border=True):
         st.markdown("**Site Performance Options:**")
-        st.info("Comparing full site performance ranking table with all metrics.")
+        site_comparison_type = st.radio(
+            "Select comparison type:",
+            options=["Site KPI Analysis", "Site Outreach Effectiveness"],
+            key="comparison_site_type",
+            horizontal=True,
+            help="Site KPI Analysis: Compare overall performance scores and metrics\nSite Outreach Effectiveness: Compare time to first action effectiveness"
+        )
+
+        if site_comparison_type == "Site KPI Analysis":
+            st.info("Comparing full site performance ranking table with all metrics.")
+        else:
+            st.info("Comparing how quickly sites take first action after receiving referrals and the impact on conversion rates.")
 
 elif category == "Ad Performance":
     with st.container(border=True):
@@ -221,15 +241,14 @@ st.divider()
 # --- STEP 4: Generate Comparison ---
 st.subheader("4️⃣ Generate Comparison")
 
-# Warn if scoring weights haven't been configured
-if category == "Site Performance":
+# Warn if scoring weights haven't been configured (only for KPI Analysis)
+if category == "Site Performance" and site_comparison_type == "Site KPI Analysis":
     if 'ranked_sites_df' not in st.session_state or st.session_state.get('ranked_sites_df') is None or st.session_state.ranked_sites_df.empty:
         st.warning("⚠️ **Scoring Weights Not Configured:** This comparison will use default scoring weights. For accurate results, please visit the Site Performance page and click 'Apply & Recalculate Score' first.")
+    st.info(f"💡 **Note:** Scores are calculated based on weights configured on the **{category}** page. Make sure you've configured and applied your preferred scoring weights before running this comparison for meaningful results.")
 elif category == "Ad Performance":
     if 'ranked_ad_source_df' not in st.session_state or st.session_state.get('ranked_ad_source_df') is None or st.session_state.ranked_ad_source_df.empty:
         st.warning("⚠️ **Scoring Weights Not Configured:** This comparison will use default scoring weights. For accurate results, please visit the Ad Performance page and click 'Apply & Recalculate Score' first.")
-
-if category in ["Site Performance", "Ad Performance"]:
     st.info(f"💡 **Note:** Scores are calculated based on weights configured on the **{category}** page. Make sure you've configured and applied your preferred scoring weights before running this comparison for meaningful results.")
 
 if st.button("🔬 Generate Comparison", type="primary", use_container_width=True):
@@ -248,35 +267,45 @@ if st.button("🔬 Generate Comparison", type="primary", use_container_width=Tru
 
             # Call appropriate comparison function based on category
             if category == "Site Performance":
-                # Get current weights from session state
-                weights = {
-                    "StS to Enrollment %": st.session_state.get('w_site_sts_to_enr', 10),
-                    "ICF to Enrollment %": st.session_state.get('w_site_icf_to_enroll', 10),
-                    "StS to ICF %": st.session_state.get('w_site_sts_to_icf', 10),
-                    "StS to Appt %": st.session_state.get('w_site_sts_appt', 10),
-                    "StS Contact Rate %": st.session_state.get('w_site_contact_rate', 10),
-                    "Average time to first site action": st.session_state.get('w_site_avg_time_to_first_action', 10),
-                    "Avg time from StS to Appt Sched.": st.session_state.get('w_site_lag_sts_appt', 10),
-                    "Avg. Time Between Site Contacts": st.session_state.get('w_site_avg_time_between_contacts', 10),
-                    "Avg time from StS to ICF": st.session_state.get('w_site_lag_sts_icf', 10),
-                    "Total Referrals Awaiting First Site Action": st.session_state.get('w_site_awaiting_action', 10),
-                    "SF or Lost After ICF %": st.session_state.get('w_site_icf_to_lost', 10),
-                    "StS to Lost %": st.session_state.get('w_site_sts_to_lost', 10),
-                }
+                if site_comparison_type == "Site KPI Analysis":
+                    # Get current weights from session state
+                    weights = {
+                        "StS to Enrollment %": st.session_state.get('w_site_sts_to_enr', 10),
+                        "ICF to Enrollment %": st.session_state.get('w_site_icf_to_enroll', 10),
+                        "StS to ICF %": st.session_state.get('w_site_sts_to_icf', 10),
+                        "StS to Appt %": st.session_state.get('w_site_sts_appt', 10),
+                        "StS Contact Rate %": st.session_state.get('w_site_contact_rate', 10),
+                        "Average time to first site action": st.session_state.get('w_site_avg_time_to_first_action', 10),
+                        "Avg time from StS to Appt Sched.": st.session_state.get('w_site_lag_sts_appt', 10),
+                        "Avg. Time Between Site Contacts": st.session_state.get('w_site_avg_time_between_contacts', 10),
+                        "Avg time from StS to ICF": st.session_state.get('w_site_lag_sts_icf', 10),
+                        "Total Referrals Awaiting First Site Action": st.session_state.get('w_site_awaiting_action', 10),
+                        "SF or Lost After ICF %": st.session_state.get('w_site_icf_to_lost', 10),
+                        "StS to Lost %": st.session_state.get('w_site_sts_to_lost', 10),
+                    }
 
-                # Normalize weights
-                total_weight = sum(abs(w) for w in weights.values())
-                weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
+                    # Normalize weights
+                    total_weight = sum(abs(w) for w in weights.values())
+                    weights_normalized = {k: v / total_weight for k, v in weights.items()} if total_weight > 0 else {}
 
-                comparison_results = calculate_comparison_for_site_performance(
-                    df=df,
-                    date_range_a=(start_a, end_a),
-                    date_range_b=(start_b, end_b),
-                    ordered_stages=st.session_state.ordered_stages,
-                    ts_col_map=st.session_state.ts_col_map,
-                    weights=weights_normalized,
-                    business_hours_only=business_hours_only
-                )
+                    comparison_results = calculate_comparison_for_site_performance(
+                        df=df,
+                        date_range_a=(start_a, end_a),
+                        date_range_b=(start_b, end_b),
+                        ordered_stages=st.session_state.ordered_stages,
+                        ts_col_map=st.session_state.ts_col_map,
+                        weights=weights_normalized,
+                        business_hours_only=business_hours_only
+                    )
+                else:  # Site Outreach Effectiveness
+                    comparison_results = calculate_comparison_for_site_outreach(
+                        df=df,
+                        date_range_a=(start_a, end_a),
+                        date_range_b=(start_b, end_b),
+                        ts_col_map=st.session_state.ts_col_map,
+                        ordered_stages=st.session_state.ordered_stages,
+                        business_hours_only=business_hours_only
+                    )
 
             elif category == "Ad Performance":
                 # Get ad weights
@@ -447,6 +476,138 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     ['Site', 'Score_A', 'Score_B', 'Score_Delta', 'Grade_A', 'Grade_B']
                 ]
                 st.dataframe(top_declined, hide_index=True, use_container_width=True)
+
+    elif stored_category == "Site Performance" and results['type'] == 'time_to_first_action':
+        st.markdown("### Site Outreach Effectiveness Comparison")
+        st.markdown("_Comparing how quickly sites take first action after receiving referrals_")
+
+        # Display Outreach KPIs first
+        st.markdown("### Outreach KPIs")
+
+        # Get operational KPIs from results
+        operational_kpis = results.get('operational_kpis', {})
+        kpis_a = operational_kpis.get('period_a', {})
+        kpis_b = operational_kpis.get('period_b', {})
+
+        if kpis_a and kpis_b:
+            # KPI 1: Avg. Time to First Site Action
+            create_metric_card_comparison(
+                metric_name="Avg. Time to First Site Action",
+                value_a=kpis_a.get('avg_time_to_first_action', 0) or 0,
+                value_b=kpis_b.get('avg_time_to_first_action', 0) or 0,
+                label_a=label_a_stored,
+                label_b=label_b_stored,
+                format_type='days',
+                is_inverse=True
+            )
+
+            # KPI 2: Avg. Time Between Site Contacts
+            create_metric_card_comparison(
+                metric_name="Avg. Time Between Site Contacts",
+                value_a=kpis_a.get('avg_time_between_contacts', 0) or 0,
+                value_b=kpis_b.get('avg_time_between_contacts', 0) or 0,
+                label_a=label_a_stored,
+                label_b=label_b_stored,
+                format_type='days',
+                is_inverse=True
+            )
+
+            # KPI 3: Avg. Time StS to Appt. Sched.
+            create_metric_card_comparison(
+                metric_name="Avg. Time StS to Appt. Sched.",
+                value_a=kpis_a.get('avg_time_sts_to_appt', 0) or 0,
+                value_b=kpis_b.get('avg_time_sts_to_appt', 0) or 0,
+                label_a=label_a_stored,
+                label_b=label_b_stored,
+                format_type='days',
+                is_inverse=True
+            )
+
+            # KPI 4: Referrals Awaiting Action > 7 Days
+            create_metric_card_comparison(
+                metric_name="Referrals Awaiting Action > 7 Days",
+                value_a=kpis_a.get('referrals_awaiting_action_7d', 0) or 0,
+                value_b=kpis_b.get('referrals_awaiting_action_7d', 0) or 0,
+                label_a=label_a_stored,
+                label_b=label_b_stored,
+                format_type='number',
+                is_inverse=True
+            )
+
+        # Check if comparison data exists
+        if 'comparison' in results and not results['comparison'].empty:
+            with st.container(border=True):
+                st.markdown("#### Time to First Action Effectiveness")
+
+                # Format the display table
+                comp_df = results['comparison'].copy()
+
+                # Define the correct order for time buckets (quickest to longest)
+                time_bucket_order = ['< 4 Hours', '4 - 8 Hours', '8 - 24 Hours', '1 - 2 Days', '2 - 3 Days',
+                                    '3 - 5 Days', '5 - 7 Days', '7 - 14 Days', '> 14 Days']
+
+                # Sort by the correct time bucket order
+                comp_df['Time to First Site Action'] = pd.Categorical(
+                    comp_df['Time to First Site Action'],
+                    categories=time_bucket_order,
+                    ordered=True
+                )
+                comp_df = comp_df.sort_values('Time to First Site Action')
+
+                display_df = pd.DataFrame()
+
+                # Key column (time bucket)
+                display_df['Time to First Site Action'] = comp_df['Time to First Site Action'].astype(str)
+
+                # Count metrics - show Period A, Period B with + sign for change
+                count_metrics = ['Attempts', 'Total_Appts', 'Total_ICF', 'Total_Enrolled']
+                metric_labels = {
+                    'Attempts': 'Total Referrals',
+                    'Total_Appts': 'Total Appointments',
+                    'Total_ICF': 'Total ICFs',
+                    'Total_Enrolled': 'Total Enrollments'
+                }
+
+                for metric in count_metrics:
+                    label = metric_labels.get(metric, metric)
+                    if f'{metric}_A' in comp_df.columns:
+                        display_df[f'{label} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
+                        # Add + sign to Period B value
+                        display_df[f'{label} ({label_b_stored})'] = comp_df[f'{metric}_B'].apply(
+                            lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—"
+                        )
+
+                # Rate metrics - show as percentages
+                rate_metrics = ['Appt_Rate', 'ICF_Rate', 'Enrollment_Rate']
+                rate_labels = {
+                    'Appt_Rate': 'Appt. Rate',
+                    'ICF_Rate': 'ICF Rate',
+                    'Enrollment_Rate': 'Enrollment Rate'
+                }
+
+                for metric in rate_metrics:
+                    label = rate_labels.get(metric, metric)
+                    if f'{metric}_A' in comp_df.columns:
+                        # Convert decimal to percentage
+                        display_df[f'{label} ({label_a_stored})'] = comp_df[f'{metric}_A'].apply(
+                            lambda x: f"{x*100:.1f}%" if pd.notna(x) else "—"
+                        )
+                        display_df[f'{label} ({label_b_stored})'] = comp_df[f'{metric}_B'].apply(
+                            lambda x: f"{x*100:.1f}%" if pd.notna(x) else "—"
+                        )
+                        # Show percentage change
+                        def calc_pct_change(row, metric=metric):
+                            delta = row[f'{metric}_Delta']
+                            base = row[f'{metric}_A']
+                            if pd.notna(delta) and pd.notna(base) and base != 0:
+                                pct_change = (delta / base) * 100
+                                return f"{pct_change:+.1f}%"
+                            return "—"
+                        display_df[f'Δ {label}'] = comp_df.apply(lambda row: calc_pct_change(row, metric), axis=1)
+
+                st.dataframe(display_df, hide_index=True, use_container_width=True)
+        else:
+            st.warning("No comparison data available. This may be due to insufficient data in the selected date ranges.")
 
     elif stored_category == "Ad Performance":
         st.markdown(f"### {results.get('key_column', 'Ad')} Performance Comparison")
@@ -700,12 +861,22 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     generate_ad_performance_insights,
                     generate_pc_performance_insights,
                     generate_funnel_insights,
+                    generate_site_outreach_insights,
                     display_ai_insights
                 )
 
                 if stored_category == "Site Performance" and results['type'] == 'full_table':
                     insights = generate_site_performance_insights(
                         results['comparison'],
+                        label_a_stored,
+                        label_b_stored
+                    )
+
+                elif stored_category == "Site Performance" and results['type'] == 'time_to_first_action':
+                    # Site Outreach Effectiveness - pass operational KPIs
+                    insights = generate_site_outreach_insights(
+                        results.get('operational_kpis', {}).get('period_a', {}),
+                        results.get('operational_kpis', {}).get('period_b', {}),
                         label_a_stored,
                         label_b_stored
                     )
