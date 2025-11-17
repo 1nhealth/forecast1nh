@@ -177,6 +177,14 @@ if category == "Site Performance":
             help="Site KPI Analysis: Compare overall performance scores and metrics\nSite Outreach Effectiveness: Compare time to first action effectiveness"
         )
 
+        # Clear results if site comparison type changes
+        if 'last_site_comparison_type' not in st.session_state:
+            st.session_state.last_site_comparison_type = site_comparison_type
+        elif st.session_state.last_site_comparison_type != site_comparison_type:
+            st.session_state.comparison_results = None
+            st.session_state.comparison_ai_insights = None
+            st.session_state.last_site_comparison_type = site_comparison_type
+
         if site_comparison_type == "Site KPI Analysis":
             st.info("Comparing full site performance ranking table with all metrics.")
         else:
@@ -192,6 +200,14 @@ elif category == "Ad Performance":
             horizontal=True
         )
 
+        # Clear results if ad table type changes
+        if 'last_ad_table_type' not in st.session_state:
+            st.session_state.last_ad_table_type = table_type
+        elif st.session_state.last_ad_table_type != table_type:
+            st.session_state.comparison_results = None
+            st.session_state.comparison_ai_insights = None
+            st.session_state.last_ad_table_type = table_type
+
 elif category == "PC Performance":
     with st.container(border=True):
         st.markdown("**PC Performance Options:**")
@@ -201,6 +217,14 @@ elif category == "PC Performance":
             key="comparison_pc_type",
             horizontal=True
         )
+
+        # Clear results if PC comparison type changes
+        if 'last_pc_comparison_type' not in st.session_state:
+            st.session_state.last_pc_comparison_type = pc_comparison_type
+        elif st.session_state.last_pc_comparison_type != pc_comparison_type:
+            st.session_state.comparison_results = None
+            st.session_state.comparison_ai_insights = None
+            st.session_state.last_pc_comparison_type = pc_comparison_type
 
 elif category == "Funnel Analysis":
     with st.container(border=True):
@@ -214,6 +238,14 @@ elif category == "Funnel Analysis":
             key="comparison_funnel_rate_method",
             horizontal=True
         )
+
+        # Clear results if funnel rate method changes
+        if 'last_funnel_rate_method' not in st.session_state:
+            st.session_state.last_funnel_rate_method = funnel_rate_method
+        elif st.session_state.last_funnel_rate_method != funnel_rate_method:
+            st.session_state.comparison_results = None
+            st.session_state.comparison_ai_insights = None
+            st.session_state.last_funnel_rate_method = funnel_rate_method
 
         if funnel_rate_method == "Rolling Historical Average":
             funnel_rolling_window = st.selectbox(
@@ -422,13 +454,15 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                 display_df[f'Grade ({label_a_stored})'] = comp_df['Grade_A']
                 display_df[f'Grade ({label_b_stored})'] = comp_df['Grade_B']
 
-            # Count metrics - show Period B with + sign, no separate change column
+            # Count metrics - show Period A, cumulative Period B, and change
             count_metrics = ['Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count']
             for metric in count_metrics:
                 if f'{metric}_A' in comp_df.columns:
                     display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                    # Add + sign to Period B value
-                    display_df[f'{metric} ({label_b_stored})'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                    # Show cumulative total (Period A + Period B)
+                    display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
+                    # Show change (Period B only)
+                    display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
             # Percentage metrics - show percentage change (not percentage point)
             pct_metrics = ['StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'ICF to Enrollment %']
@@ -559,7 +593,7 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                 # Key column (time bucket)
                 display_df['Time to First Site Action'] = comp_df['Time to First Site Action'].astype(str)
 
-                # Count metrics - show Period A, Period B with + sign for change
+                # Count metrics - show Period A, cumulative Period B, and change
                 count_metrics = ['Attempts', 'Total_Appts', 'Total_ICF', 'Total_Enrolled']
                 metric_labels = {
                     'Attempts': 'Total Referrals',
@@ -572,8 +606,10 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     label = metric_labels.get(metric, metric)
                     if f'{metric}_A' in comp_df.columns:
                         display_df[f'{label} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                        # Add + sign to Period B value
-                        display_df[f'{label} ({label_b_stored})'] = comp_df[f'{metric}_B'].apply(
+                        # Show cumulative total (Period A + Period B)
+                        display_df[f'{label} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
+                        # Show change (Period B only)
+                        display_df[f'Δ {label}'] = comp_df[f'{metric}_B'].apply(
                             lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—"
                         )
 
@@ -645,13 +681,15 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     display_df[f'Grade ({label_a_stored})'] = comp_df['Grade_A']
                     display_df[f'Grade ({label_b_stored})'] = comp_df['Grade_B']
 
-                # Count metrics - show Period B with + sign, no separate change column
+                # Count metrics - show Period A, cumulative Period B, and change
                 count_metrics = ['Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 'Screen Fail Count']
                 for metric in count_metrics:
                     if f'{metric}_A' in comp_df.columns:
                         display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                        # Add + sign to Period B value
-                        display_df[f'{metric} ({label_b_stored})'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                        # Show cumulative total (Period A + Period B)
+                        display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
+                        # Show change (Period B only)
+                        display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
                 # Percentage metrics - show percentage change
                 pct_metrics = ['Qualified to StS %', 'StS to Appt %', 'Qualified to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %', 'ICF to Enrollment %', 'Screen Fail % (from Qualified)']
@@ -729,13 +767,15 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     # Key column (time bucket)
                     display_df['Time to First Contact'] = comp_df['Time to First Contact'].astype(str)
 
-                    # Count metrics - show Period B with + sign, no separate change column
+                    # Count metrics - show Period A, cumulative Period B, and change
                     count_metrics = ['Attempts', 'Total_StS', 'Total_ICF', 'Total_Enrolled']
                     for metric in count_metrics:
                         if f'{metric}_A' in comp_df.columns:
                             display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                            # Add + sign to Period B value
-                            display_df[f'{metric} ({label_b_stored})'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                            # Show cumulative total (Period A + Period B)
+                            display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
+                            # Show change (Period B only)
+                            display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
                     # Rate metrics - show as percentages
                     rate_metrics = ['StS_Rate', 'ICF_Rate', 'Enrollment_Rate']
@@ -773,13 +813,15 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     # Key column
                     display_df['Number of Attempts'] = comp_df['Number of Attempts']
 
-                    # Count metrics - show Period B with + sign, no separate change column
+                    # Count metrics - show Period A, cumulative Period B, and change
                     count_metrics = ['Total Referrals', 'Total_StS', 'Total_ICF', 'Total_Enrolled']
                     for metric in count_metrics:
                         if f'{metric}_A' in comp_df.columns:
                             display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                            # Add + sign to Period B value
-                            display_df[f'{metric} ({label_b_stored})'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                            # Show cumulative total (Period A + Period B)
+                            display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
+                            # Show change (Period B only)
+                            display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
                     # Rate metrics - show as percentages in order: A, B, Delta for each metric
                     rate_metrics = ['StS_Rate', 'ICF_Rate', 'Enrollment_Rate']
