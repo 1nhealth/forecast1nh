@@ -759,18 +759,6 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
         from comparison_ai import display_ai_insights
         display_ai_insights(st.session_state.comparison_ai_insights)
 
-    st.divider()
-
-    # --- STEP 7: Export Options (Placeholder) ---
-    st.subheader("📥 Export Options")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.button("📄 Export to CSV", disabled=True, help="Coming soon")
-
-    with col2:
-        st.button("📑 Export to PDF", disabled=True, help="Coming soon")
-
 elif st.session_state.comparison_results and st.session_state.comparison_results.get('error'):
     st.error("Error in comparison calculation. Please check your inputs and try again.")
     if 'validation' in st.session_state.comparison_results:
