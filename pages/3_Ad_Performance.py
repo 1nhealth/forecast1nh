@@ -4,6 +4,7 @@ import pandas as pd
 
 from scoring import score_performance_groups
 from helpers import format_performance_df, load_css
+import page_ai_insights as ai
 
 st.set_page_config(page_title="Ad Performance", page_icon="📢", layout="wide")
 
@@ -78,6 +79,50 @@ with st.container(border=True):
         final_ad_display = df_to_display[display_cols_exist]
         formatted_df = format_performance_df(final_ad_display)
         st.dataframe(formatted_df, hide_index=True, use_container_width=True)
+
+        # AI Summary Section
+        st.markdown("---")
+        st.subheader("🤖 AI-Powered Insights")
+
+        # Focus selector
+        ai_focus = st.radio(
+            "Analysis Focus:",
+            options=["ICF", "Enrollment"],
+            horizontal=True,
+            key="ad_ai_focus",
+            help="Choose whether AI should focus on driving ICFs or Enrollments"
+        )
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            generate_btn = st.button("Generate AI Summary", key="ad_ai_btn", type="primary")
+        with col2:
+            if f"ad_performance_ai_insights_{ai_focus}" in st.session_state:
+                regenerate_btn = st.button("🔄 Regenerate", key="ad_ai_regen")
+            else:
+                regenerate_btn = False
+
+        if generate_btn or regenerate_btn:
+            with st.spinner(f"Analyzing ad performance data for {ai_focus} optimization..."):
+                data_dict = ai.sanitize_ad_data(
+                    ranked_ads_df=st.session_state.ranked_ad_source_df,
+                    top_n=5,
+                    bottom_n=5
+                )
+
+                insights = ai.get_cached_or_generate_insights(
+                    page_name="ad_performance",
+                    data_dict=data_dict,
+                    generate_func=lambda d: ai.generate_ad_insights(d, focus=ai_focus),
+                    focus=ai_focus,
+                    force_regenerate=regenerate_btn
+                )
+
+                st.info(insights)
+                st.caption(f"💾 {ai_focus}-focused insights cached for this session. Will auto-refresh if data changes.")
+        elif f"ad_performance_ai_insights_{ai_focus}" in st.session_state:
+            st.info(st.session_state[f'ad_performance_ai_insights_{ai_focus}'])
+            st.caption(f"💾 Cached {ai_focus}-focused insights (data unchanged)")
     else:
         st.info("Adjust weights and click 'Apply & Recalculate Score' to generate the ranking table.")
 

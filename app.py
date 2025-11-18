@@ -10,6 +10,7 @@ from processing import preprocess_referral_data
 from calculations import calculate_overall_inter_stage_lags, calculate_enhanced_site_metrics, calculate_enhanced_ad_metrics
 from constants import *
 from helpers import format_performance_df, load_css
+import page_ai_insights as ai
 
 st.set_page_config(
     page_title="Recruitment Forecasting Tool",
@@ -129,14 +130,17 @@ if st.button("🗑️ Clear Data & Start New Analysis", type="secondary"):
     for key in APP_DATA_KEYS + APP_RESULT_KEYS + PAGE_UI_STATE_KEYS:
         if key in st.session_state:
             del st.session_state[key]
-            
+
+    # Clear ALL AI caches
+    ai.clear_all_ai_caches()
+
     # Reset all scoring weights to their defaults
     for key in SCORING_WEIGHT_KEYS:
         st.session_state[key] = default_values.get(key)
-        
+
     st.toast("Data and settings have been reset!", icon="✅")
     import time
-    time.sleep(1) 
+    time.sleep(1)
     st.rerun()
 
 st.divider()
@@ -189,6 +193,10 @@ else:
 
                             # Set the master flag to True
                             st.session_state.data_processed_successfully = True
+
+                            # Clear ALL AI caches since new data was uploaded
+                            ai.clear_all_ai_caches()
+
                             st.rerun() # Rerun to show the success message and hide the uploaders
                         else:
                             st.error("Data processing failed after preprocessing.")

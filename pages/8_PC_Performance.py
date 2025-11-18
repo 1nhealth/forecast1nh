@@ -4,12 +4,12 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 from datetime import datetime, time
-import plotly.graph_objects as go 
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from pc_calculations import (
-    calculate_heatmap_data, 
-    calculate_average_time_metrics, 
+    calculate_heatmap_data,
+    calculate_average_time_metrics,
     calculate_top_status_flows,
     calculate_ttfc_effectiveness,
     calculate_contact_attempt_effectiveness,
@@ -17,6 +17,7 @@ from pc_calculations import (
     analyze_heatmap_efficiency # Import new function
 )
 from helpers import format_days_to_dhm, load_css
+import page_ai_insights as ai
 
 st.set_page_config(page_title="PC Performance", page_icon="📞", layout="wide")
 
@@ -306,5 +307,63 @@ else:
             title_text=f"Weekly Trend: {primary_metric}",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        
+
         st.plotly_chart(fig, use_container_width=True)
+
+st.divider()
+
+# AI Summary Section
+with st.container(border=True):
+    st.subheader("🤖 AI-Powered Insights")
+
+    # Focus selector
+    ai_focus = st.radio(
+        "Analysis Focus:",
+        options=["ICF", "Enrollment"],
+        horizontal=True,
+        key="pc_ai_focus",
+        help="Choose whether AI should focus on driving ICFs or Enrollments"
+    )
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        generate_btn = st.button("Generate AI Summary", key="pc_ai_btn", type="primary")
+    with col2:
+        if f"pc_performance_ai_insights_{ai_focus}" in st.session_state:
+            regenerate_btn = st.button("🔄 Regenerate", key="pc_ai_regen")
+        else:
+            regenerate_btn = False
+
+    if generate_btn or regenerate_btn:
+        with st.spinner(f"Analyzing PC performance data for {ai_focus} optimization..."):
+            # For PC Performance, create a pseudo-dataframe with aggregate metrics
+            pc_metrics_dict = {
+                'time_metrics': time_metrics,
+                'ttfc_effectiveness': ttfc_df.to_dict('records') if not ttfc_df.empty else [],
+                'attempt_effectiveness': attempt_effectiveness_df.to_dict('records') if not attempt_effectiveness_df.empty else [],
+                'heatmap_insights': heatmap_insights,
+                'date_range': f"{start_date} to {end_date}" if 'start_date' in locals() else "Full dataset"
+            }
+
+            data_dict = ai.sanitize_pc_data(
+                pc_metrics_df=ttfc_df if not ttfc_df.empty else attempt_effectiveness_df,
+                top_n=3,
+                bottom_n=3
+            )
+            # Add additional context
+            data_dict['time_metrics'] = time_metrics
+            data_dict['heatmap_insights'] = heatmap_insights
+
+            insights = ai.get_cached_or_generate_insights(
+                page_name="pc_performance",
+                data_dict=data_dict,
+                generate_func=lambda d: ai.generate_pc_insights(d, focus=ai_focus),
+                focus=ai_focus,
+                force_regenerate=regenerate_btn
+            )
+
+            st.info(insights)
+            st.caption(f"💾 {ai_focus}-focused insights cached for this session. Will auto-refresh if data changes.")
+    elif f"pc_performance_ai_insights_{ai_focus}" in st.session_state:
+        st.info(st.session_state[f'pc_performance_ai_insights_{ai_focus}'])
+        st.caption(f"💾 Cached {ai_focus}-focused insights (data unchanged)")

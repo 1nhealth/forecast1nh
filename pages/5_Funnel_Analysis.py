@@ -7,6 +7,7 @@ from datetime import datetime
 from forecasting import determine_effective_projection_rates, calculate_pipeline_projection, generate_funnel_narrative
 from constants import *
 from helpers import format_performance_df, load_css
+import page_ai_insights as ai
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Funnel Analysis", page_icon="🔬", layout="wide")
@@ -133,3 +134,45 @@ if 'funnel_analysis_results' in st.session_state and st.session_state.funnel_ana
             st.line_chart(chart_df)
         else:
             st.info("No future landings are projected from the current in-flight leads.")
+
+    st.divider()
+
+    # AI Summary Section
+    with st.container(border=True):
+        st.subheader("🤖 AI-Powered Insights")
+
+        # Focus selector
+        ai_focus = st.radio(
+            "Analysis Focus:",
+            options=["ICF", "Enrollment"],
+            horizontal=True,
+            key="funnel_ai_focus",
+            help="Choose whether AI should focus on ICF or Enrollment capacity"
+        )
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            generate_btn = st.button("Generate AI Summary", key="funnel_ai_btn", type="primary")
+        with col2:
+            if f"funnel_analysis_ai_insights_{ai_focus}" in st.session_state:
+                regenerate_btn = st.button("🔄 Regenerate", key="funnel_ai_regen")
+            else:
+                regenerate_btn = False
+
+        if generate_btn or regenerate_btn:
+            with st.spinner(f"Analyzing {ai_focus} pipeline capacity..."):
+                data_dict = ai.sanitize_funnel_data(results)
+
+                insights = ai.get_cached_or_generate_insights(
+                    page_name="funnel_analysis",
+                    data_dict=data_dict,
+                    generate_func=lambda d: ai.generate_funnel_insights(d, focus=ai_focus),
+                    focus=ai_focus,
+                    force_regenerate=regenerate_btn
+                )
+
+                st.info(insights)
+                st.caption(f"💾 {ai_focus} capacity insights cached for this session. Will auto-refresh if data changes.")
+        elif f"funnel_analysis_ai_insights_{ai_focus}" in st.session_state:
+            st.info(st.session_state[f'funnel_analysis_ai_insights_{ai_focus}'])
+            st.caption(f"💾 Cached {ai_focus} capacity insights (data unchanged)")

@@ -15,6 +15,7 @@ from calculations import (
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import plotly.express as px
+import page_ai_insights as ai
 
 st.set_page_config(page_title="Site Performance", page_icon="🏆", layout="wide")
 
@@ -303,5 +304,55 @@ with st.container(border=True):
         
         formatted_df = format_performance_df(final_display_df)
         st.dataframe(formatted_df, hide_index=True, use_container_width=True)
+
+        # AI Summary Section
+        st.markdown("---")
+        st.subheader("🤖 AI-Powered Insights")
+
+        # Focus selector
+        ai_focus = st.radio(
+            "Analysis Focus:",
+            options=["ICF", "Enrollment"],
+            horizontal=True,
+            key="site_ai_focus",
+            help="Choose whether AI should focus on driving ICFs or Enrollments"
+        )
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            generate_btn = st.button("Generate AI Summary", key="site_ai_btn", type="primary")
+        with col2:
+            if f"site_performance_ai_insights_{ai_focus}" in st.session_state:
+                regenerate_btn = st.button("🔄 Regenerate", key="site_ai_regen")
+            else:
+                regenerate_btn = False
+
+        if generate_btn or regenerate_btn:
+            with st.spinner(f"Analyzing site performance data for {ai_focus} optimization..."):
+                # Prepare data for analysis
+                data_dict = ai.sanitize_site_data(
+                    ranked_sites_df=st.session_state.ranked_sites_df,
+                    top_n=5,
+                    bottom_n=5
+                )
+
+                # Get cached or generate new insights
+                insights = ai.get_cached_or_generate_insights(
+                    page_name="site_performance",
+                    data_dict=data_dict,
+                    generate_func=lambda d: ai.generate_site_insights(d, focus=ai_focus),
+                    focus=ai_focus,
+                    force_regenerate=regenerate_btn
+                )
+
+                # Display insights
+                st.info(insights)
+
+                # Show cache status
+                st.caption(f"💾 {ai_focus}-focused insights cached for this session. Will auto-refresh if data changes.")
+        elif f"site_performance_ai_insights_{ai_focus}" in st.session_state:
+            # Show cached insights automatically
+            st.info(st.session_state[f'site_performance_ai_insights_{ai_focus}'])
+            st.caption(f"💾 Cached {ai_focus}-focused insights (data unchanged)")
     else:
         st.info("Adjust weights and click 'Apply & Recalculate Score' to generate the ranking table.")
