@@ -454,15 +454,26 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                 display_df[f'Grade ({label_a_stored})'] = comp_df['Grade_A']
                 display_df[f'Grade ({label_b_stored})'] = comp_df['Grade_B']
 
-            # Count metrics - show Period A, cumulative Period B, and change
+            # Count metrics - show period-specific AND cumulative totals
             count_metrics = ['Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count']
             for metric in count_metrics:
                 if f'{metric}_A' in comp_df.columns:
-                    display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                    # Show cumulative total (Period A + Period B)
-                    display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
-                    # Show change (Period B only)
-                    display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                    # During Period A (period-specific count)
+                    display_df[f'{metric} During {label_a_stored}'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
+                    # During Period B (period-specific count)
+                    display_df[f'{metric} During {label_b_stored}'] = comp_df[f'{metric}_B'].fillna(0).astype(int)
+                    # Delta between periods
+                    display_df[f'Δ {metric} Period'] = comp_df[f'{metric}_Delta'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                    # Study Total (Period A) - cumulative from study start
+                    if f'{metric}_Cumulative_A' in comp_df.columns:
+                        display_df[f'{metric} Study Total ({label_a_stored})'] = comp_df[f'{metric}_Cumulative_A'].fillna(0).astype(int)
+                    # Study Total (Period B) - cumulative from study start
+                    if f'{metric}_Cumulative_B' in comp_df.columns:
+                        display_df[f'{metric} Study Total ({label_b_stored})'] = comp_df[f'{metric}_Cumulative_B'].fillna(0).astype(int)
+                    # Delta Study Total
+                    if f'{metric}_Cumulative_A' in comp_df.columns and f'{metric}_Cumulative_B' in comp_df.columns:
+                        cumulative_delta = comp_df[f'{metric}_Cumulative_B'] - comp_df[f'{metric}_Cumulative_A']
+                        display_df[f'Δ {metric} Study Total'] = cumulative_delta.apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
             # Percentage metrics - show percentage change (not percentage point)
             pct_metrics = ['StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'ICF to Enrollment %']
@@ -593,7 +604,7 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                 # Key column (time bucket)
                 display_df['Time to First Site Action'] = comp_df['Time to First Site Action'].astype(str)
 
-                # Count metrics - show Period A, cumulative Period B, and change
+                # Count metrics - show period-specific AND cumulative totals
                 count_metrics = ['Attempts', 'Total_Appts', 'Total_ICF', 'Total_Enrolled']
                 metric_labels = {
                     'Attempts': 'Total Referrals',
@@ -605,13 +616,26 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                 for metric in count_metrics:
                     label = metric_labels.get(metric, metric)
                     if f'{metric}_A' in comp_df.columns:
-                        display_df[f'{label} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                        # Show cumulative total (Period A + Period B)
-                        display_df[f'{label} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
-                        # Show change (Period B only)
-                        display_df[f'Δ {label}'] = comp_df[f'{metric}_B'].apply(
+                        # During Period A (period-specific count)
+                        display_df[f'{label} During {label_a_stored}'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
+                        # During Period B (period-specific count)
+                        display_df[f'{label} During {label_b_stored}'] = comp_df[f'{metric}_B'].fillna(0).astype(int)
+                        # Delta between periods
+                        display_df[f'Δ {label} Period'] = comp_df[f'{metric}_Delta'].apply(
                             lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—"
                         )
+                        # Study Total (Period A) - cumulative from study start
+                        if f'{metric}_Cumulative_A' in comp_df.columns:
+                            display_df[f'{label} Study Total ({label_a_stored})'] = comp_df[f'{metric}_Cumulative_A'].fillna(0).astype(int)
+                        # Study Total (Period B) - cumulative from study start
+                        if f'{metric}_Cumulative_B' in comp_df.columns:
+                            display_df[f'{label} Study Total ({label_b_stored})'] = comp_df[f'{metric}_Cumulative_B'].fillna(0).astype(int)
+                        # Delta Study Total
+                        if f'{metric}_Cumulative_A' in comp_df.columns and f'{metric}_Cumulative_B' in comp_df.columns:
+                            cumulative_delta = comp_df[f'{metric}_Cumulative_B'] - comp_df[f'{metric}_Cumulative_A']
+                            display_df[f'Δ {label} Study Total'] = cumulative_delta.apply(
+                                lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—"
+                            )
 
                 # Rate metrics - show as percentages
                 rate_metrics = ['Appt_Rate', 'ICF_Rate', 'Enrollment_Rate']
@@ -681,15 +705,26 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     display_df[f'Grade ({label_a_stored})'] = comp_df['Grade_A']
                     display_df[f'Grade ({label_b_stored})'] = comp_df['Grade_B']
 
-                # Count metrics - show Period A, cumulative Period B, and change
+                # Count metrics - show period-specific AND cumulative totals
                 count_metrics = ['Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 'Screen Fail Count']
                 for metric in count_metrics:
                     if f'{metric}_A' in comp_df.columns:
-                        display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                        # Show cumulative total (Period A + Period B)
-                        display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
-                        # Show change (Period B only)
-                        display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                        # During Period A (period-specific count)
+                        display_df[f'{metric} During {label_a_stored}'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
+                        # During Period B (period-specific count)
+                        display_df[f'{metric} During {label_b_stored}'] = comp_df[f'{metric}_B'].fillna(0).astype(int)
+                        # Delta between periods
+                        display_df[f'Δ {metric} Period'] = comp_df[f'{metric}_Delta'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                        # Study Total (Period A) - cumulative from study start
+                        if f'{metric}_Cumulative_A' in comp_df.columns:
+                            display_df[f'{metric} Study Total ({label_a_stored})'] = comp_df[f'{metric}_Cumulative_A'].fillna(0).astype(int)
+                        # Study Total (Period B) - cumulative from study start
+                        if f'{metric}_Cumulative_B' in comp_df.columns:
+                            display_df[f'{metric} Study Total ({label_b_stored})'] = comp_df[f'{metric}_Cumulative_B'].fillna(0).astype(int)
+                        # Delta Study Total
+                        if f'{metric}_Cumulative_A' in comp_df.columns and f'{metric}_Cumulative_B' in comp_df.columns:
+                            cumulative_delta = comp_df[f'{metric}_Cumulative_B'] - comp_df[f'{metric}_Cumulative_A']
+                            display_df[f'Δ {metric} Study Total'] = cumulative_delta.apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
                 # Percentage metrics - show percentage change
                 pct_metrics = ['Qualified to StS %', 'StS to Appt %', 'Qualified to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %', 'ICF to Enrollment %', 'Screen Fail % (from Qualified)']
@@ -767,15 +802,26 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     # Key column (time bucket)
                     display_df['Time to First Contact'] = comp_df['Time to First Contact'].astype(str)
 
-                    # Count metrics - show Period A, cumulative Period B, and change
+                    # Count metrics - show period-specific AND cumulative totals
                     count_metrics = ['Attempts', 'Total_StS', 'Total_ICF', 'Total_Enrolled']
                     for metric in count_metrics:
                         if f'{metric}_A' in comp_df.columns:
-                            display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                            # Show cumulative total (Period A + Period B)
-                            display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
-                            # Show change (Period B only)
-                            display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                            # During Period A (period-specific count)
+                            display_df[f'{metric} During {label_a_stored}'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
+                            # During Period B (period-specific count)
+                            display_df[f'{metric} During {label_b_stored}'] = comp_df[f'{metric}_B'].fillna(0).astype(int)
+                            # Delta between periods
+                            display_df[f'Δ {metric} Period'] = comp_df[f'{metric}_Delta'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                            # Study Total (Period A) - cumulative from study start
+                            if f'{metric}_Cumulative_A' in comp_df.columns:
+                                display_df[f'{metric} Study Total ({label_a_stored})'] = comp_df[f'{metric}_Cumulative_A'].fillna(0).astype(int)
+                            # Study Total (Period B) - cumulative from study start
+                            if f'{metric}_Cumulative_B' in comp_df.columns:
+                                display_df[f'{metric} Study Total ({label_b_stored})'] = comp_df[f'{metric}_Cumulative_B'].fillna(0).astype(int)
+                            # Delta Study Total
+                            if f'{metric}_Cumulative_A' in comp_df.columns and f'{metric}_Cumulative_B' in comp_df.columns:
+                                cumulative_delta = comp_df[f'{metric}_Cumulative_B'] - comp_df[f'{metric}_Cumulative_A']
+                                display_df[f'Δ {metric} Study Total'] = cumulative_delta.apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
                     # Rate metrics - show as percentages
                     rate_metrics = ['StS_Rate', 'ICF_Rate', 'Enrollment_Rate']
@@ -813,15 +859,26 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
                     # Key column
                     display_df['Number of Attempts'] = comp_df['Number of Attempts']
 
-                    # Count metrics - show Period A, cumulative Period B, and change
+                    # Count metrics - show period-specific AND cumulative totals
                     count_metrics = ['Total Referrals', 'Total_StS', 'Total_ICF', 'Total_Enrolled']
                     for metric in count_metrics:
                         if f'{metric}_A' in comp_df.columns:
-                            display_df[f'{metric} ({label_a_stored})'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
-                            # Show cumulative total (Period A + Period B)
-                            display_df[f'{metric} ({label_b_stored})'] = (comp_df[f'{metric}_A'].fillna(0) + comp_df[f'{metric}_B'].fillna(0)).astype(int)
-                            # Show change (Period B only)
-                            display_df[f'Δ {metric}'] = comp_df[f'{metric}_B'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                            # During Period A (period-specific count)
+                            display_df[f'{metric} During {label_a_stored}'] = comp_df[f'{metric}_A'].fillna(0).astype(int)
+                            # During Period B (period-specific count)
+                            display_df[f'{metric} During {label_b_stored}'] = comp_df[f'{metric}_B'].fillna(0).astype(int)
+                            # Delta between periods
+                            display_df[f'Δ {metric} Period'] = comp_df[f'{metric}_Delta'].apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
+                            # Study Total (Period A) - cumulative from study start
+                            if f'{metric}_Cumulative_A' in comp_df.columns:
+                                display_df[f'{metric} Study Total ({label_a_stored})'] = comp_df[f'{metric}_Cumulative_A'].fillna(0).astype(int)
+                            # Study Total (Period B) - cumulative from study start
+                            if f'{metric}_Cumulative_B' in comp_df.columns:
+                                display_df[f'{metric} Study Total ({label_b_stored})'] = comp_df[f'{metric}_Cumulative_B'].fillna(0).astype(int)
+                            # Delta Study Total
+                            if f'{metric}_Cumulative_A' in comp_df.columns and f'{metric}_Cumulative_B' in comp_df.columns:
+                                cumulative_delta = comp_df[f'{metric}_Cumulative_B'] - comp_df[f'{metric}_Cumulative_A']
+                                display_df[f'Δ {metric} Study Total'] = cumulative_delta.apply(lambda x: f"+{x:,.0f}" if pd.notna(x) and x > 0 else f"{x:,.0f}" if pd.notna(x) else "—")
 
                     # Rate metrics - show as percentages in order: A, B, Delta for each metric
                     rate_metrics = ['StS_Rate', 'ICF_Rate', 'Enrollment_Rate']

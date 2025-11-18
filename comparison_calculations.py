@@ -59,6 +59,30 @@ def filter_by_date_range(df: pd.DataFrame, start_date, end_date, date_column='Su
     return df_filtered[mask].copy()
 
 
+def filter_cumulative_to_date(df: pd.DataFrame, end_date, date_column='Submitted On_DT') -> pd.DataFrame:
+    """
+    Filter dataframe to get all data from the beginning of the dataset up to the specified end date.
+    Used for cumulative study totals.
+
+    Args:
+        df: DataFrame to filter
+        end_date: End date (datetime, date, or string)
+        date_column: Column name containing dates
+
+    Returns:
+        Filtered DataFrame with all data up to end_date
+    """
+    df_filtered = df.copy()
+
+    # Convert to pandas Timestamp
+    end_ts = pd.Timestamp(end_date)
+
+    # Filter from beginning to end_date
+    mask = df_filtered[date_column] <= end_ts
+
+    return df_filtered[mask].copy()
+
+
 def validate_date_ranges(start_a, end_a, start_b, end_b, df: pd.DataFrame, date_column='Submitted On_DT') -> Dict[str, Any]:
     """
     Validate date ranges and check for data sufficiency.
@@ -305,12 +329,16 @@ def calculate_comparison_for_site_performance(
             'validation': validation
         }
 
-    # Filter data by date ranges
+    # Filter data by date ranges - PERIOD-SPECIFIC (during each period only)
     df_a = filter_by_date_range(df, start_a, end_a)
     df_b = filter_by_date_range(df, start_b, end_b)
 
+    # Filter data for CUMULATIVE calculations (from beginning to end of each period)
+    df_cumulative_a = filter_cumulative_to_date(df, end_a)
+    df_cumulative_b = filter_cumulative_to_date(df, end_b)
+
     if compare_full_table:
-        # Calculate full enhanced metrics + scoring for both periods
+        # Calculate full enhanced metrics + scoring for both PERIODS
         enhanced_a = calculate_enhanced_site_metrics(
             df_a, ordered_stages, ts_col_map,
             "Parsed_Lead_Status_History",
@@ -323,9 +351,38 @@ def calculate_comparison_for_site_performance(
             business_hours_only=business_hours_only
         )
 
-        # Score sites
+        # Calculate full enhanced metrics for CUMULATIVE totals
+        enhanced_cumulative_a = calculate_enhanced_site_metrics(
+            df_cumulative_a, ordered_stages, ts_col_map,
+            "Parsed_Lead_Status_History",
+            business_hours_only=business_hours_only
+        )
+
+        enhanced_cumulative_b = calculate_enhanced_site_metrics(
+            df_cumulative_b, ordered_stages, ts_col_map,
+            "Parsed_Lead_Status_History",
+            business_hours_only=business_hours_only
+        )
+
+        # Score sites (only needed for period-specific, not cumulative)
         ranked_a = score_sites(enhanced_a, weights)
         ranked_b = score_sites(enhanced_b, weights)
+
+        # Extract count metrics from cumulative calculations
+        # We only need the count columns, not all metrics
+        count_metrics = ['Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count']
+
+        # Add cumulative counts to ranked dataframes
+        for metric in count_metrics:
+            if metric in enhanced_cumulative_a.columns:
+                ranked_a[f'{metric}_Cumulative'] = ranked_a['Site'].map(
+                    enhanced_cumulative_a.set_index('Site')[metric]
+                ).fillna(0)
+
+            if metric in enhanced_cumulative_b.columns:
+                ranked_b[f'{metric}_Cumulative'] = ranked_b['Site'].map(
+                    enhanced_cumulative_b.set_index('Site')[metric]
+                ).fillna(0)
 
         # Define metric configs (which metrics are inverse/lower is better)
         metric_configs = {
@@ -393,13 +450,21 @@ def calculate_comparison_for_site_outreach(
             'validation': validation
         }
 
-    # Filter data by date ranges
+    # Filter data by date ranges - PERIOD-SPECIFIC (during each period only)
     df_a = filter_by_date_range(df, start_a, end_a)
     df_b = filter_by_date_range(df, start_b, end_b)
 
-    # Calculate Time to First Action Effectiveness for both periods
+    # Filter data for CUMULATIVE calculations (from beginning to end of each period)
+    df_cumulative_a = filter_cumulative_to_date(df, end_a)
+    df_cumulative_b = filter_cumulative_to_date(df, end_b)
+
+    # Calculate Time to First Action Effectiveness for both PERIODS
     ttfa_a = calculate_site_ttfc_effectiveness(df_a, ts_col_map, "Overall", business_hours_only=business_hours_only)
     ttfa_b = calculate_site_ttfc_effectiveness(df_b, ts_col_map, "Overall", business_hours_only=business_hours_only)
+
+    # Calculate Time to First Action Effectiveness for CUMULATIVE data
+    ttfa_cumulative_a = calculate_site_ttfc_effectiveness(df_cumulative_a, ts_col_map, "Overall", business_hours_only=business_hours_only)
+    ttfa_cumulative_b = calculate_site_ttfc_effectiveness(df_cumulative_b, ts_col_map, "Overall", business_hours_only=business_hours_only)
 
     if ttfa_a.empty or ttfa_b.empty:
         return {
@@ -478,6 +543,20 @@ def calculate_comparison_for_site_outreach(
         }
     }
 
+    # Add cumulative count columns to period dataframes
+    count_metrics = ['Attempts', 'Total_Appts', 'Total_ICF', 'Total_Enrolled']
+
+    for metric in count_metrics:
+        if metric in ttfa_cumulative_a.columns:
+            ttfa_a[f'{metric}_Cumulative'] = ttfa_a['Time to First Site Action'].map(
+                ttfa_cumulative_a.set_index('Time to First Site Action')[metric]
+            ).fillna(0)
+
+        if metric in ttfa_cumulative_b.columns:
+            ttfa_b[f'{metric}_Cumulative'] = ttfa_b['Time to First Site Action'].map(
+                ttfa_cumulative_b.set_index('Time to First Site Action')[metric]
+            ).fillna(0)
+
     # Merge and calculate deltas
     comparison_df = ttfa_a.merge(
         ttfa_b,
@@ -549,11 +628,15 @@ def calculate_comparison_for_ad_performance(
             'validation': validation
         }
 
-    # Filter data
+    # Filter data - PERIOD-SPECIFIC (during each period only)
     df_a = filter_by_date_range(df, start_a, end_a)
     df_b = filter_by_date_range(df, start_b, end_b)
 
-    # Calculate enhanced metrics
+    # Filter data for CUMULATIVE calculations (from beginning to end of each period)
+    df_cumulative_a = filter_cumulative_to_date(df, end_a)
+    df_cumulative_b = filter_cumulative_to_date(df, end_b)
+
+    # Calculate enhanced metrics for PERIODS
     if table_type == 'source':
         enhanced_a = calculate_enhanced_ad_metrics(
             df_a, ordered_stages, ts_col_map,
@@ -563,6 +646,17 @@ def calculate_comparison_for_ad_performance(
             df_b, ordered_stages, ts_col_map,
             "UTM Source", "Unclassified Source"
         )
+
+        # Calculate enhanced metrics for CUMULATIVE data
+        enhanced_cumulative_a = calculate_enhanced_ad_metrics(
+            df_cumulative_a, ordered_stages, ts_col_map,
+            "UTM Source", "Unclassified Source"
+        )
+        enhanced_cumulative_b = calculate_enhanced_ad_metrics(
+            df_cumulative_b, ordered_stages, ts_col_map,
+            "UTM Source", "Unclassified Source"
+        )
+
         key_col = 'UTM Source'
     else:  # combo
         # Create combined column like in app.py
@@ -572,6 +666,12 @@ def calculate_comparison_for_ad_performance(
         df_b_combo = df_b.copy()
         df_b_combo['UTM Source/Medium'] = df_b_combo['UTM Source'].astype(str).fillna("Unclassified") + ' / ' + df_b_combo['UTM Medium'].astype(str).fillna("Unclassified")
 
+        df_cumulative_a_combo = df_cumulative_a.copy()
+        df_cumulative_a_combo['UTM Source/Medium'] = df_cumulative_a_combo['UTM Source'].astype(str).fillna("Unclassified") + ' / ' + df_cumulative_a_combo['UTM Medium'].astype(str).fillna("Unclassified")
+
+        df_cumulative_b_combo = df_cumulative_b.copy()
+        df_cumulative_b_combo['UTM Source/Medium'] = df_cumulative_b_combo['UTM Source'].astype(str).fillna("Unclassified") + ' / ' + df_cumulative_b_combo['UTM Medium'].astype(str).fillna("Unclassified")
+
         enhanced_a = calculate_enhanced_ad_metrics(
             df_a_combo, ordered_stages, ts_col_map,
             "UTM Source/Medium", "Unclassified Combo"
@@ -580,11 +680,36 @@ def calculate_comparison_for_ad_performance(
             df_b_combo, ordered_stages, ts_col_map,
             "UTM Source/Medium", "Unclassified Combo"
         )
+
+        # Calculate enhanced metrics for CUMULATIVE data
+        enhanced_cumulative_a = calculate_enhanced_ad_metrics(
+            df_cumulative_a_combo, ordered_stages, ts_col_map,
+            "UTM Source/Medium", "Unclassified Combo"
+        )
+        enhanced_cumulative_b = calculate_enhanced_ad_metrics(
+            df_cumulative_b_combo, ordered_stages, ts_col_map,
+            "UTM Source/Medium", "Unclassified Combo"
+        )
+
         key_col = 'UTM Source/Medium'
 
-    # Score performance groups
+    # Score performance groups (only for period-specific, not cumulative)
     ranked_a = score_performance_groups(enhanced_a, weights, key_col)
     ranked_b = score_performance_groups(enhanced_b, weights, key_col)
+
+    # Extract count metrics from cumulative calculations and add to ranked dataframes
+    count_metrics = ['Total Qualified', 'StS Count', 'Appt Count', 'ICF Count', 'Enrollment Count', 'Screen Fail Count']
+
+    for metric in count_metrics:
+        if metric in enhanced_cumulative_a.columns:
+            ranked_a[f'{metric}_Cumulative'] = ranked_a[key_col].map(
+                enhanced_cumulative_a.set_index(key_col)[metric]
+            ).fillna(0)
+
+        if metric in enhanced_cumulative_b.columns:
+            ranked_b[f'{metric}_Cumulative'] = ranked_b[key_col].map(
+                enhanced_cumulative_b.set_index(key_col)[metric]
+            ).fillna(0)
 
     # Metric configs
     metric_configs = {
@@ -634,9 +759,13 @@ def calculate_comparison_for_pc_performance(
             'validation': validation
         }
 
-    # Filter data
+    # Filter data - PERIOD-SPECIFIC (during each period only)
     df_a = filter_by_date_range(df, start_a, end_a)
     df_b = filter_by_date_range(df, start_b, end_b)
+
+    # Filter data for CUMULATIVE calculations (from beginning to end of each period)
+    df_cumulative_a = filter_cumulative_to_date(df, end_a)
+    df_cumulative_b = filter_cumulative_to_date(df, end_b)
 
     if comparison_type == 'time_metrics':
         # Calculate time metrics for both periods
@@ -654,7 +783,7 @@ def calculate_comparison_for_pc_performance(
         }
 
     elif comparison_type == 'contact_effectiveness':
-        # Calculate contact effectiveness for both periods
+        # Calculate contact effectiveness for both PERIODS
         effectiveness_a = calculate_contact_attempt_effectiveness(
             df_a, ts_col_map, "Parsed_Lead_Status_History",
             business_hours_only
@@ -663,6 +792,30 @@ def calculate_comparison_for_pc_performance(
             df_b, ts_col_map, "Parsed_Lead_Status_History",
             business_hours_only
         )
+
+        # Calculate contact effectiveness for CUMULATIVE data
+        effectiveness_cumulative_a = calculate_contact_attempt_effectiveness(
+            df_cumulative_a, ts_col_map, "Parsed_Lead_Status_History",
+            business_hours_only
+        )
+        effectiveness_cumulative_b = calculate_contact_attempt_effectiveness(
+            df_cumulative_b, ts_col_map, "Parsed_Lead_Status_History",
+            business_hours_only
+        )
+
+        # Add cumulative count columns to period dataframes
+        count_metrics = ['Total Referrals', 'Total_StS', 'Total_ICF', 'Total_Enrolled']
+
+        for metric in count_metrics:
+            if metric in effectiveness_cumulative_a.columns:
+                effectiveness_a[f'{metric}_Cumulative'] = effectiveness_a['Number of Attempts'].map(
+                    effectiveness_cumulative_a.set_index('Number of Attempts')[metric]
+                ).fillna(0)
+
+            if metric in effectiveness_cumulative_b.columns:
+                effectiveness_b[f'{metric}_Cumulative'] = effectiveness_b['Number of Attempts'].map(
+                    effectiveness_cumulative_b.set_index('Number of Attempts')[metric]
+                ).fillna(0)
 
         # Merge and calculate deltas
         metric_configs = {}  # Define as needed
@@ -682,11 +835,29 @@ def calculate_comparison_for_pc_performance(
         }
 
     elif comparison_type == 'time_to_contact_effectiveness':
-        # Calculate time to first contact effectiveness for both periods
+        # Calculate time to first contact effectiveness for both PERIODS
         from pc_calculations import calculate_ttfc_effectiveness
 
         ttfc_a = calculate_ttfc_effectiveness(df_a, ts_col_map, business_hours_only=business_hours_only)
         ttfc_b = calculate_ttfc_effectiveness(df_b, ts_col_map, business_hours_only=business_hours_only)
+
+        # Calculate time to first contact effectiveness for CUMULATIVE data
+        ttfc_cumulative_a = calculate_ttfc_effectiveness(df_cumulative_a, ts_col_map, business_hours_only=business_hours_only)
+        ttfc_cumulative_b = calculate_ttfc_effectiveness(df_cumulative_b, ts_col_map, business_hours_only=business_hours_only)
+
+        # Add cumulative count columns to period dataframes
+        count_metrics = ['Attempts', 'Total_StS', 'Total_ICF', 'Total_Enrolled']
+
+        for metric in count_metrics:
+            if metric in ttfc_cumulative_a.columns:
+                ttfc_a[f'{metric}_Cumulative'] = ttfc_a['Time to First Contact'].map(
+                    ttfc_cumulative_a.set_index('Time to First Contact')[metric]
+                ).fillna(0)
+
+            if metric in ttfc_cumulative_b.columns:
+                ttfc_b[f'{metric}_Cumulative'] = ttfc_b['Time to First Contact'].map(
+                    ttfc_cumulative_b.set_index('Time to First Contact')[metric]
+                ).fillna(0)
 
         # Merge and calculate deltas
         metric_configs = {}  # Define as needed
