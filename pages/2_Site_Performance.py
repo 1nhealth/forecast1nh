@@ -332,6 +332,7 @@ with st.container(border=True):
                 # Prepare data for analysis
                 data_dict = ai.sanitize_site_data(
                     ranked_sites_df=st.session_state.ranked_sites_df,
+                    focus=ai_focus,
                     top_n=5,
                     bottom_n=5
                 )

@@ -125,18 +125,24 @@ def get_cache_status() -> dict:
 # DATA SANITIZATION FUNCTIONS
 # ============================================================================
 
-def sanitize_site_data(ranked_sites_df: pd.DataFrame, top_n: int = 5, bottom_n: int = 5) -> dict:
+def sanitize_site_data(ranked_sites_df: pd.DataFrame, focus: str = "ICF", top_n: int = 5, bottom_n: int = 5) -> dict:
     """
-    Extract aggregated site metrics for AI analysis.
-    Only sends top/bottom performers and summary statistics - no full dataset.
+    Extract aggregated site metrics for AI analysis using intelligent filtering and mean-based comparison.
+
+    Features:
+    - Dynamic minimum threshold based on median StS count (scales with study size)
+    - Mean-based site selection (above/below mean on focus metric)
+    - Filters out sites with insufficient data
+    - Prevents overlap when total sites < (top_n + bottom_n)
 
     Args:
         ranked_sites_df: DataFrame with ranked site performance
-        top_n: Number of top performers to include
-        bottom_n: Number of bottom performers to include
+        focus: "ICF" or "Enrollment" - determines which metric to use for comparison
+        top_n: Number of top performers to include (above mean)
+        bottom_n: Number of bottom performers to include (below mean)
 
     Returns:
-        Dictionary with aggregated metrics
+        Dictionary with aggregated metrics and filtering metadata
     """
     if ranked_sites_df is None or len(ranked_sites_df) == 0:
         return {'error': 'No site data available'}
@@ -169,9 +175,56 @@ def sanitize_site_data(ranked_sites_df: pd.DataFrame, top_n: int = 5, bottom_n: 
         'StS Contact Rate %', 'SF or Lost After ICF %', 'StS to Lost %'
     ]
 
+    # DYNAMIC THRESHOLD CALCULATION
+    # Use median StS count to determine appropriate minimum (scales with study size)
+    median_sts = ranked_sites_df['StS Count'].median() if 'StS Count' in ranked_sites_df.columns else 10
+    min_sts_threshold = max(3, int(median_sts * 0.20))  # At least 3, or 20% of median
+
+    # Filter sites with sufficient data
+    filtered_df = ranked_sites_df[ranked_sites_df['StS Count'] >= min_sts_threshold].copy()
+
+    if len(filtered_df) == 0:
+        # Fallback: if no sites meet threshold, use all sites with at least 1 StS
+        min_sts_threshold = 1
+        filtered_df = ranked_sites_df[ranked_sites_df['StS Count'] >= 1].copy()
+
+    # Determine focus metric based on focus parameter
+    if focus == "ICF":
+        focus_metric = 'StS to ICF %'
+    else:  # Enrollment
+        focus_metric = 'ICF to Enrollment %'
+
+    # Calculate mean of focus metric for filtered sites
+    if focus_metric in filtered_df.columns:
+        mean_focus_value = filtered_df[focus_metric].mean()
+    else:
+        mean_focus_value = 0
+
+    # Split sites into above/below mean
+    above_mean_df = filtered_df[filtered_df[focus_metric] > mean_focus_value].copy()
+    below_mean_df = filtered_df[filtered_df[focus_metric] < mean_focus_value].copy()
+
+    # Sort by focus metric value (not composite score)
+    above_mean_df = above_mean_df.sort_values(focus_metric, ascending=False)
+    below_mean_df = below_mean_df.sort_values(focus_metric, ascending=True)
+
+    # Prevent overlap when total sites < (top_n + bottom_n)
+    total_filtered = len(filtered_df)
+    if total_filtered < (top_n + bottom_n):
+        # Reduce to half of available sites each
+        adjusted_n = max(1, total_filtered // 2)
+        top_n = min(top_n, adjusted_n)
+        bottom_n = min(bottom_n, adjusted_n)
+
+    # Select top performers (above mean, highest values)
+    top_sites_df = above_mean_df.head(min(top_n, len(above_mean_df)))
+
+    # Select bottom performers (below mean, lowest values)
+    bottom_sites_df = below_mean_df.head(min(bottom_n, len(below_mean_df)))
+
     # Build top sites summary with ALL operational metrics
     top_sites = []
-    for _, row in ranked_sites_df.head(top_n).iterrows():
+    for _, row in top_sites_df.iterrows():
         site_info = {'site_name': row.get('Site', 'Unknown')}
         for metric in operational_metrics:
             site_info[metric] = safe_get(row, metric, 0)
@@ -179,21 +232,33 @@ def sanitize_site_data(ranked_sites_df: pd.DataFrame, top_n: int = 5, bottom_n: 
 
     # Build bottom sites summary with ALL operational metrics
     bottom_sites = []
-    for _, row in ranked_sites_df.tail(bottom_n).iterrows():
+    for _, row in bottom_sites_df.iterrows():
         site_info = {'site_name': row.get('Site', 'Unknown')}
         for metric in operational_metrics:
             site_info[metric] = safe_get(row, metric, 0)
         bottom_sites.append(site_info)
 
-    # Calculate averages for all operational metrics
+    # Calculate averages for all operational metrics (using FILTERED data)
     avg_metrics = {}
     for metric in operational_metrics:
-        avg_metrics[f'avg_{metric}'] = float(safe_mean(metric, 0))
+        if metric in filtered_df.columns:
+            avg_metrics[f'avg_{metric}'] = float(filtered_df[metric].mean())
+        else:
+            avg_metrics[f'avg_{metric}'] = 0
 
     return {
         'top_sites': top_sites,
         'bottom_sites': bottom_sites,
-        'total_sites': len(ranked_sites_df),
+        'total_sites': len(filtered_df),
+        'total_sites_unfiltered': len(ranked_sites_df),
+        'sites_excluded': len(ranked_sites_df) - len(filtered_df),
+        'min_sts_threshold': min_sts_threshold,
+        'median_sts': float(median_sts),
+        'focus_metric': focus_metric,
+        'mean_focus_value': float(mean_focus_value),
+        'sites_above_mean': len(above_mean_df),
+        'sites_below_mean': len(below_mean_df),
+        'sites_at_mean': total_filtered - len(above_mean_df) - len(below_mean_df),
         **avg_metrics  # Unpack all average metrics
     }
 
@@ -431,15 +496,24 @@ def generate_site_insights(sanitized_data: dict, focus: str = "ICF") -> str:
         if focus == "ICF":
             prompt = f"""You are analyzing site ICF performance data.
 
-STUDY AVERAGES:
-- Total Sites: {sanitized_data['total_sites']}
+DATA FILTERING APPLIED:
+- Minimum StS threshold: {sanitized_data.get('min_sts_threshold', 10)} (dynamically calculated as 20% of median StS: {sanitized_data.get('median_sts', 0):.0f})
+- Sites analyzed: {sanitized_data['total_sites']} of {sanitized_data.get('total_sites_unfiltered', 0)} total
+- Sites excluded (insufficient data): {sanitized_data.get('sites_excluded', 0)}
+- Focus metric: {sanitized_data.get('focus_metric', 'StS to ICF %')}
+
+STUDY AVERAGES (filtered sites only):
+- Study Mean {sanitized_data.get('focus_metric', 'StS to ICF %')}: {sanitized_data.get('mean_focus_value', 0):.1%}
+- Sites above mean: {sanitized_data.get('sites_above_mean', 0)}
+- Sites below mean: {sanitized_data.get('sites_below_mean', 0)}
 - Study Average StS to ICF %: {sanitized_data.get('avg_StS to ICF %', 0):.1%}
 - Study Average StS to Appt %: {sanitized_data.get('avg_StS to Appt %', 0):.1%}
 - Study Average time to first site action: {sanitized_data.get('avg_Average time to first site action', 0):.1f} days
 
-ALL SITE DATA (top and bottom performers):
+ABOVE MEAN PERFORMERS (sorted by {sanitized_data.get('focus_metric', 'StS to ICF %')}):
 {json.dumps(sanitized_data['top_sites'], indent=2)}
 
+BELOW MEAN PERFORMERS (sorted by {sanitized_data.get('focus_metric', 'StS to ICF %')}):
 {json.dumps(sanitized_data['bottom_sites'], indent=2)}
 
 INSTRUCTIONS:
@@ -453,50 +527,60 @@ YOUR ANALYSIS STRUCTURE:
 
 ### 1. Key Metrics Driving ICF Performance
 Identify the 2-3 metrics that most strongly differentiate high vs low performing sites.
-Compare top sites to bottom sites with actual numbers from the data.
-Example: "Top sites average 45% StS to ICF vs bottom sites 12%"
+Compare above-mean performers to below-mean performers with actual numbers from the data.
+Example: "Above-mean sites average 45% StS to ICF vs below-mean sites 12%"
 
-### 2. Distribution vs Study Average
-The study average StS to ICF rate is {sanitized_data.get('avg_StS to ICF %', 0):.1%}.
-Count and list which sites fall above this average and which fall below.
-Format: "X sites above average: [list names]. Y sites below average: [list names]"
+### 2. Distribution vs Study Mean
+The study mean StS to ICF rate is {sanitized_data.get('mean_focus_value', 0):.1%}.
+You have {len(sanitized_data.get('top_sites', []))} sites above mean and {len(sanitized_data.get('bottom_sites', []))} sites below mean.
+List sites by name in each category.
+Format: "X sites above mean: [list names]. Y sites below mean: [list names]"
 
 ### 3. Top Site Concentration
-Calculate what % of total study ICFs come from the top 5 sites.
-List these top 5 sites by name with their ICF counts.
-Show the math: "Top 5 sites: X ICFs ÷ Y total ICFs = Z%"
+Calculate what % of total study ICFs come from the above-mean performing sites.
+List these sites by name with their ICF counts.
+Show the math: "Above-mean sites: X ICFs ÷ Y total ICFs = Z%"
 
 ### 4. Performance Gap Analysis
-Compare top 5 sites vs bottom 5 sites on key metrics:
+Compare above-mean sites vs below-mean sites on key metrics:
 - StS to ICF %
 - StS to Appt %
 - Average time to first site action
 - Any other relevant metrics in the data
 
-Identify 2-3 specific gaps where bottom sites could improve.
-Use actual numbers: "Bottom sites: X%, Top sites: Y%, Gap: Z%"
+Identify 2-3 specific gaps where below-mean sites could improve.
+Use actual numbers: "Below-mean sites: X%, Above-mean sites: Y%, Gap: Z%"
 
 ### 5. Improvement Impact Calculation
-If the bottom 5 sites improved their StS to ICF % to match the study average of {sanitized_data.get('avg_StS to ICF %', 0):.1%}:
+If the below-mean sites improved their StS to ICF % to match the study mean of {sanitized_data.get('mean_focus_value', 0):.1%}:
 - Calculate their current total ICFs
-- Calculate what they would generate at the study average
+- Calculate what they would generate at the study mean rate
 - Show the gain in additional ICFs
 
-Format: "Bottom 5 current: X ICFs. At study average: Y ICFs. Gain: Z additional ICFs"
+Format: "Below-mean sites current: X ICFs. At study mean: Y ICFs. Gain: Z additional ICFs"
 
 CRITICAL: Use ONLY the actual data provided above. Show all calculations clearly."""
 
         else:  # focus == "Enrollment"
             prompt = f"""You are analyzing site Enrollment performance data.
 
-STUDY AVERAGES:
-- Total Sites: {sanitized_data['total_sites']}
+DATA FILTERING APPLIED:
+- Minimum StS threshold: {sanitized_data.get('min_sts_threshold', 10)} (dynamically calculated as 20% of median StS: {sanitized_data.get('median_sts', 0):.0f})
+- Sites analyzed: {sanitized_data['total_sites']} of {sanitized_data.get('total_sites_unfiltered', 0)} total
+- Sites excluded (insufficient data): {sanitized_data.get('sites_excluded', 0)}
+- Focus metric: {sanitized_data.get('focus_metric', 'ICF to Enrollment %')}
+
+STUDY AVERAGES (filtered sites only):
+- Study Mean {sanitized_data.get('focus_metric', 'ICF to Enrollment %')}: {sanitized_data.get('mean_focus_value', 0):.1%}
+- Sites above mean: {sanitized_data.get('sites_above_mean', 0)}
+- Sites below mean: {sanitized_data.get('sites_below_mean', 0)}
 - Study Average ICF to Enrollment %: {sanitized_data.get('avg_ICF to Enrollment %', 0):.1%}
 - Study Average SF or Lost After ICF %: {sanitized_data.get('avg_SF or Lost After ICF %', 0):.1%}
 
-ALL SITE DATA (top and bottom performers):
+ABOVE MEAN PERFORMERS (sorted by {sanitized_data.get('focus_metric', 'ICF to Enrollment %')}):
 {json.dumps(sanitized_data['top_sites'], indent=2)}
 
+BELOW MEAN PERFORMERS (sorted by {sanitized_data.get('focus_metric', 'ICF to Enrollment %')}):
 {json.dumps(sanitized_data['bottom_sites'], indent=2)}
 
 INSTRUCTIONS:
@@ -508,35 +592,36 @@ INSTRUCTIONS:
 
 ### 1. Key Metrics Driving Enrollment Performance
 Identify the 2-3 metrics that most strongly differentiate high vs low performing sites.
-Compare top sites to bottom sites with actual numbers from the data.
-Example: "Top sites average 85% ICF to Enrollment vs bottom sites 45%"
+Compare above-mean performers to below-mean performers with actual numbers from the data.
+Example: "Above-mean sites average 85% ICF to Enrollment vs below-mean sites 45%"
 
-### 2. Distribution vs Study Average
-The study average ICF to Enrollment rate is {sanitized_data.get('avg_ICF to Enrollment %', 0):.1%}.
-Count and list which sites fall above this average and which fall below.
-Format: "X sites above average: [list names]. Y sites below average: [list names]"
+### 2. Distribution vs Study Mean
+The study mean ICF to Enrollment rate is {sanitized_data.get('mean_focus_value', 0):.1%}.
+You have {len(sanitized_data.get('top_sites', []))} sites above mean and {len(sanitized_data.get('bottom_sites', []))} sites below mean.
+List sites by name in each category.
+Format: "X sites above mean: [list names]. Y sites below mean: [list names]"
 
 ### 3. Top Site Concentration
-Calculate what % of total study Enrollments come from the top 5 sites.
-List these top 5 sites by name with their Enrollment counts.
-Show the math: "Top 5 sites: X Enrollments ÷ Y total Enrollments = Z%"
+Calculate what % of total study Enrollments come from the above-mean performing sites.
+List these sites by name with their Enrollment counts.
+Show the math: "Above-mean sites: X Enrollments ÷ Y total Enrollments = Z%"
 
 ### 4. Performance Gap Analysis
-Compare top 5 sites vs bottom 5 sites on key metrics:
+Compare above-mean sites vs below-mean sites on key metrics:
 - ICF to Enrollment %
 - SF or Lost After ICF % (screen fail rate)
 - Any other relevant metrics in the data
 
-Identify 2-3 specific gaps where bottom sites could improve.
-Use actual numbers: "Bottom sites: X%, Top sites: Y%, Gap: Z%"
+Identify 2-3 specific gaps where below-mean sites could improve.
+Use actual numbers: "Below-mean sites: X%, Above-mean sites: Y%, Gap: Z%"
 
 ### 5. Improvement Impact Calculation
-If the bottom 5 sites improved their ICF to Enrollment % to match the study average of {sanitized_data.get('avg_ICF to Enrollment %', 0):.1%}:
+If the below-mean sites improved their ICF to Enrollment % to match the study mean of {sanitized_data.get('mean_focus_value', 0):.1%}:
 - Calculate their current total Enrollments
-- Calculate what they would generate at the study average
+- Calculate what they would generate at the study mean rate
 - Show the gain in additional Enrollments
 
-Format: "Bottom 5 current: X Enrollments. At study average: Y Enrollments. Gain: Z additional Enrollments"
+Format: "Below-mean sites current: X Enrollments. At study mean: Y Enrollments. Gain: Z additional Enrollments"
 
 CRITICAL: Use ONLY the actual data provided above. Show all calculations clearly."""
 
