@@ -212,6 +212,8 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                 
                 # Create a storage for captured display data
                 captured_data = []
+                # Store actual DataFrames for download functionality
+                captured_dataframes = []
                 
                 def get_dataframe_summary(df):
                     """Extract comprehensive summary statistics from a DataFrame"""
@@ -252,9 +254,11 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                     """Wrapper for st.dataframe that captures the data with statistics"""
                     if isinstance(data, pd.DataFrame):
                         captured_data.append(("dataframe", get_dataframe_summary(data)))
+                        captured_dataframes.append(("dataframe", data.copy()))
                     elif isinstance(data, pd.Series):
                         df_from_series = data.to_frame()
                         captured_data.append(("dataframe", get_dataframe_summary(df_from_series)))
+                        captured_dataframes.append(("dataframe", df_from_series.copy()))
                     elif isinstance(data, (list, dict)):
                         captured_data.append(("dataframe", str(data)))
                     return st.dataframe(data, *args, **kwargs)
@@ -263,9 +267,11 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                     """Wrapper for st.table that captures the data with statistics"""
                     if isinstance(data, pd.DataFrame):
                         captured_data.append(("table", get_dataframe_summary(data)))
+                        captured_dataframes.append(("table", data.copy()))
                     elif isinstance(data, pd.Series):
                         df_from_series = data.to_frame()
                         captured_data.append(("table", get_dataframe_summary(df_from_series)))
+                        captured_dataframes.append(("table", df_from_series.copy()))
                     elif isinstance(data, (list, dict)):
                         captured_data.append(("table", str(data)))
                     return st.table(data, *args, **kwargs)
@@ -275,9 +281,11 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                     for arg in args:
                         if isinstance(arg, pd.DataFrame):
                             captured_data.append(("write", get_dataframe_summary(arg)))
+                            captured_dataframes.append(("write", arg.copy()))
                         elif isinstance(arg, pd.Series):
                             df_from_series = arg.to_frame()
                             captured_data.append(("write", get_dataframe_summary(df_from_series)))
+                            captured_dataframes.append(("write", df_from_series.copy()))
                         elif isinstance(arg, (list, dict)):
                             captured_data.append(("write", str(arg)))
                         else:
@@ -387,7 +395,62 @@ if user_prompt := st.chat_input("Ask a question about your data..."):
                     execution_output = output_buffer.getvalue()
                     if execution_output:
                         st.text(execution_output)
-                    
+
+                    # Add download buttons for any captured DataFrames
+                    if captured_dataframes:
+                        st.markdown("---")
+                        st.markdown("### 📥 Download Options")
+
+                        from datetime import datetime
+                        import io
+
+                        for idx, (display_type, df_data) in enumerate(captured_dataframes):
+                            # Create a unique identifier for this table
+                            table_num = idx + 1
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                            # Create columns for the download section
+                            col1, col2, col3 = st.columns([2, 1, 1])
+
+                            with col1:
+                                st.caption(f"**Table {table_num}** ({df_data.shape[0]} rows × {df_data.shape[1]} columns)")
+
+                            with col2:
+                                # CSV Download
+                                try:
+                                    csv_data = df_data.to_csv(index=False).encode('utf-8')
+                                    st.download_button(
+                                        label="CSV",
+                                        data=csv_data,
+                                        file_name=f'ai_analysis_table{table_num}_{timestamp}.csv',
+                                        mime='text/csv',
+                                        key=f'download_csv_{idx}_{timestamp}',
+                                        use_container_width=True
+                                    )
+                                except Exception as e:
+                                    st.warning(f"CSV export unavailable: {str(e)}")
+
+                            with col3:
+                                # Excel Download
+                                try:
+                                    output = io.BytesIO()
+                                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                        df_data.to_excel(writer, sheet_name=f'Table_{table_num}', index=False)
+                                    excel_data = output.getvalue()
+
+                                    st.download_button(
+                                        label="Excel",
+                                        data=excel_data,
+                                        file_name=f'ai_analysis_table{table_num}_{timestamp}.xlsx',
+                                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                        key=f'download_excel_{idx}_{timestamp}',
+                                        use_container_width=True
+                                    )
+                                except Exception as e:
+                                    st.warning(f"Excel export unavailable: {str(e)}")
+
+                        st.markdown("---")
+
                     # Build comprehensive output for AI summarization
                     comprehensive_output = []
                     if execution_output.strip():
