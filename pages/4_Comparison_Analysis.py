@@ -428,7 +428,14 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
         with st.container(border=True):
             st.markdown("#### Summary Statistics")
             key_metrics = ['Score', 'StS to Appt %', 'StS to ICF %', 'StS to Enrollment %', 'Average time to first site action']
-            summary_df = create_summary_stats_table(results['comparison'], key_metrics, label_a_stored, label_b_stored)
+            summary_df = create_summary_stats_table(
+                results['comparison'],
+                key_metrics,
+                label_a_stored,
+                label_b_stored,
+                period_a_df=results.get('period_a'),
+                period_b_df=results.get('period_b')
+            )
 
             if not summary_df.empty:
                 st.dataframe(summary_df, hide_index=True, use_container_width=True)
@@ -678,7 +685,14 @@ if st.session_state.comparison_results and not st.session_state.comparison_resul
             with st.container(border=True):
                 st.markdown("#### Summary Statistics")
                 key_metrics = ['Score', 'Qualified to StS %', 'Qualified to Appt %', 'Qualified to ICF %', 'Qualified to Enrollment %']
-                summary_df = create_summary_stats_table(results['comparison'], key_metrics, label_a_stored, label_b_stored)
+                summary_df = create_summary_stats_table(
+                    results['comparison'],
+                    key_metrics,
+                    label_a_stored,
+                    label_b_stored,
+                    period_a_df=results.get('period_a'),
+                    period_b_df=results.get('period_b')
+                )
 
                 if not summary_df.empty:
                     st.dataframe(summary_df, hide_index=True, use_container_width=True)

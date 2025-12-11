@@ -552,7 +552,9 @@ def highlight_improvements(df: pd.DataFrame, column: str, is_inverse: bool = Fal
 def create_summary_stats_table(comparison_df: pd.DataFrame,
                                metrics: List[str],
                                label_a: str,
-                               label_b: str) -> pd.DataFrame:
+                               label_b: str,
+                               period_a_df: Optional[pd.DataFrame] = None,
+                               period_b_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """
     Create a summary statistics table showing average changes across all entities.
 
@@ -561,6 +563,8 @@ def create_summary_stats_table(comparison_df: pd.DataFrame,
         metrics: List of metric names to summarize
         label_a: Label for period A
         label_b: Label for period B
+        period_a_df: Optional original Period A dataframe (before merge) for accurate averages
+        period_b_df: Optional original Period B dataframe (before merge) for accurate averages
 
     Returns:
         Summary DataFrame with formatted values
@@ -574,9 +578,19 @@ def create_summary_stats_table(comparison_df: pd.DataFrame,
         col_delta_pct = f"{metric}_Delta_Pct"
 
         if col_a in comparison_df.columns and col_b in comparison_df.columns:
-            avg_a = comparison_df[col_a].mean()
-            avg_b = comparison_df[col_b].mean()
-            avg_delta = comparison_df[col_delta].mean() if col_delta in comparison_df.columns else avg_b - avg_a
+            # Use original period DataFrames if provided (avoids 0-filled merge issues)
+            # This ensures averages are calculated only from entities that exist in each period
+            if period_a_df is not None and metric in period_a_df.columns:
+                avg_a = period_a_df[metric].mean()
+            else:
+                avg_a = comparison_df[col_a].mean()
+
+            if period_b_df is not None and metric in period_b_df.columns:
+                avg_b = period_b_df[metric].mean()
+            else:
+                avg_b = comparison_df[col_b].mean()
+
+            avg_delta = avg_b - avg_a
 
             # Determine if this is a percentage metric (contains '%' in name)
             is_percentage = '%' in metric
