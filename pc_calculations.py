@@ -385,7 +385,7 @@ def calculate_performance_over_time(df, ts_col_map):
     }))
 
     weekly_summary['Sent to Site % (Transit-Time Adjusted)'] *= 100
-    weekly_summary.fillna(method='ffill', inplace=True)
+    weekly_summary.ffill(inplace=True)
 
     return weekly_summary
 
